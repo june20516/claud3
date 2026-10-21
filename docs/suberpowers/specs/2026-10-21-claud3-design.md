@@ -148,9 +148,10 @@ type UiEvent =
   - `session`: SDK `query`를 가짜로 주입해 입력 전달, 중단, 비용 누적, 권한 위임
 - 실제 API 호출은 자동 테스트에서 하지 않는다. 각 단계 끝에 수동으로 한 번 확인한다.
 
-## 9. 미확인 사항 (구현 중 검증)
+## 9. 미확인 사항 (확인 결과, 2026-10-21)
 
-- 구독 로그인이 남은 환경에서 SDK에 `ANTHROPIC_API_KEY`를 넘겼을 때 API 키가 확실히 우선하는지 — 0단계에서 확인
-- 사용량이 Agent SDK로 분류되는지 — 0단계에서 확인
-- `settingSources`로 불러온 훅과 플러그인 스킬이 SDK에서 Claude Code와 같게 동작하는지 — 1단계에서 확인
-- 플러그인 설치 목록 파일의 정확한 위치와 형식 — 1단계 `config` 구현 시 실제 파일로 확인
+- 구독 로그인이 남은 환경에서 SDK에 `ANTHROPIC_API_KEY`를 넘겼을 때 API 키가 우선하는지 — **확인됨.** init의 `apiKeySource`가 `ANTHROPIC_API_KEY` (0단계)
+- 사용량이 Agent SDK로 분류되는지 — **확인됨.** 프로모션 크레딧 US$100.00 → US$99.99 (0단계, 사용자 Console 확인)
+- `settingSources`로 불러온 훅과 플러그인 스킬이 동작하는지 — **확인됨.** SessionStart 훅 실행(init 앞의 hook_started/hook_response), 플러그인 11개 로드, 자기 개발 확인에서 `suberpower:test-driven-development` 스킬 호출 (0·1단계)
+- 플러그인 설치 목록 파일의 위치와 형식 — **불필요해짐.** `settingSources`만으로 `enabledPlugins`가 로드되어 `plugins` 옵션을 쓰지 않는다 (`docs/suberpowers/notes/probe-results.md` 3번)
+- 추가 발견: `system:init`은 매 턴 다시 온다. `total_cost_usd`는 query 단위 누적값이다. `echo` 같은 읽기 전용 Bash는 권한을 묻지 않는다(Claude Code 규칙과 같음)
