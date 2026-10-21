@@ -50,6 +50,7 @@ export class Session {
   private currentPermissionModeValue: PermissionMode | undefined;
   /** SDK에 보낸 뒤 아직 끝나지 않은 권한 모드 변경 수. 0이 아니면 SDK 보고값을 무시한다. */
   private inFlightModeChanges = 0;
+  private latestModeRequestId = 0;
 
   constructor(private readonly deps: SessionDeps) {
     this.currentSessionId = deps.resume;
@@ -128,6 +129,7 @@ export class Session {
       return;
     }
     this.currentPermissionModeValue = mode;
+    const requestId = ++this.latestModeRequestId;
     this.emit({ type: "permission_mode", mode });
     const query = this.query;
     if (!query) {
@@ -137,8 +139,8 @@ export class Session {
     try {
       await query.setPermissionMode(mode);
     } catch (error) {
-      // 더 새로운 요청이 현재 값을 바꿨다면 되돌리지 않는다.
-      if (this.currentPermissionModeValue === mode) {
+      // 더 새로운 요청이 있으면(같은 모드를 다시 요청한 경우 포함) 되돌리지 않는다.
+      if (this.latestModeRequestId === requestId) {
         this.currentPermissionModeValue = previous;
         this.emit({ type: "permission_mode", mode: previous ?? "default" });
       }

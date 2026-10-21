@@ -537,6 +537,21 @@ describe("Session", () => {
       expect(eventsOfType(events, "error").map((event) => event.message)).toEqual(["권한 모드를 바꾸지 못했습니다: late"]);
     });
 
+    it("같은 모드를 다시 요청한 뒤 먼저 요청이 늦게 실패해도 현재 값을 되돌리지 않는다", async () => {
+      const { sdk, session, events } = createSession({ permissionMode: "default" });
+      session.start();
+      const first = deferred();
+      sdk.calls[0]?.setPermissionMode.mockReturnValueOnce(first.promise);
+      const firstCall = session.setPermissionMode("acceptEdits");
+      await session.setPermissionMode("plan");
+      await session.setPermissionMode("acceptEdits");
+      first.reject(new Error("late"));
+      await firstCall;
+      expect(session.currentPermissionMode).toBe("acceptEdits");
+      expect(modeEvents(events)).toEqual(["acceptEdits", "plan", "acceptEdits"]);
+      expect(eventsOfType(events, "error")).toHaveLength(1);
+    });
+
     it("변경 대기 중 수신한 init의 권한 모드는 무시한다", async () => {
       const { session, events, calls, push } = createInjectableSession("default");
       session.start();
