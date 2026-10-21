@@ -1,0 +1,742 @@
+[
+  {
+    "type": "system",
+    "subtype": "hook_started",
+    "hook_id": "257c33ea-5ef1-47ea-baaa-077d271fbe81",
+    "hook_name": "SessionStart:startup",
+    "hook_event": "SessionStart",
+    "uuid": "70ccc2e4-55d1-4554-8310-1429a04acfd7",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa"
+  },
+  {
+    "type": "system",
+    "subtype": "hook_started",
+    "hook_id": "050a2b0f-c9a9-44a9-8d2b-13e6c917c36e",
+    "hook_name": "SessionStart:startup",
+    "hook_event": "SessionStart",
+    "uuid": "78f82875-666a-4e0f-9508-6791a34cd0d1",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa"
+  },
+  {
+    "type": "system",
+    "subtype": "hook_started",
+    "hook_id": "3adbbb89-00c1-40d9-843c-ed9eb73bd592",
+    "hook_name": "SessionStart:startup",
+    "hook_event": "SessionStart",
+    "uuid": "6476fa81-891c-40b8-a9d9-e76d064184f4",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa"
+  },
+  {
+    "type": "system",
+    "subtype": "hook_response",
+    "hook_id": "050a2b0f-c9a9-44a9-8d2b-13e6c917c36e",
+    "hook_name": "SessionStart:startup",
+    "hook_event": "SessionStart",
+    "output": "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"SessionStart\",\n    \"additionalContext\": \"<EXTREMELY_IMPORTANT>\\nYou have superpowers. (이 포크: suberpowers)\\n\\n**Below is the full content of your 'suberpower:using-suberpowers' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\\n\\n---\\nname: using-suberpowers\\ndescription: 모든 대화를 시작할 때 사용합니다 - skill을 찾고 사용하는 방법을 확립하며, 명확화 질문을 포함한 어떤 응답이라도 하기 전에 skill 호출을 요구합니다\\n---\\n\\n<SUBAGENT-STOP>\\n특정 작업을 수행하기 위해 subagent로 dispatch되었다면, 이 skill은 무시하세요.\\n</SUBAGENT-STOP>\\n\\n<EXTREMELY-IMPORTANT>\\n지금 하고 있는 일에 어떤 skill이 적용될 가능성이 1%라도 있다고 생각된다면, **무조건 반드시** 그 skill을 호출해야 합니다.\\n\\n**skill이 작업에 적용된다면, 선택의 여지는 없습니다. 반드시 사용해야 합니다.**\\n\\n이것은 협상의 여지가 없습니다. 어떠한 합리화로도 빠져나갈 수 없습니다.\\n</EXTREMELY-IMPORTANT>\\n\\n## 규칙\\n\\n**응답이나 행동을 하기 전에 관련된 또는 요청된 skill을 호출하세요** — 명확화 질문, codebase 탐색, 파일 확인보다도 먼저입니다. 호출한 skill이 상황에 맞지 않는 것으로 판명되면, 사용하지 않아도 됩니다.\\n\\n**plan mode에 들어가기 전:** 아직 brainstorming하지 않았다면, brainstorming skill을 먼저 호출하세요.\\n\\n그런 다음 \\\"[purpose]를 위해 [skill] 사용\\\"이라고 알리고 skill을 정확히 따르세요. checklist가 있으면 항목마다 todo를 하나씩 만드세요.\\n\\n## skill 우선순위\\n\\n여러 skill이 적용될 때는 프로세스 skill이 먼저입니다 — 프로세스 skill이 접근 방식을 정하고, 구현 skill(frontend-design 등)이 그것을 실행합니다. brainstorming과 systematic-debugging은 Superpowers(suberpowers 포크)에서 가장 흔한 프로세스 skill이지만, 이 규칙은 어떤 프로세스 skill에도 똑같이 적용됩니다.\\n\\n- \\\"X를 만들자\\\" → suberpower:brainstorming 먼저, 그 다음 구현 skill.\\n- \\\"이 버그를 고쳐\\\" → suberpower:systematic-debugging 먼저, 그 다음 도메인 skill.\\n\\n## 위험 신호\\n\\n이런 생각이 들면 STOP - 합리화하고 있는 것입니다:\\n\\n| 생각 | 실제 |\\n|---------|---------|\\n| \\\"이건 그냥 간단한 질문이야\\\" | 질문도 작업입니다. skill을 확인하세요. |\\n| \\\"먼저 context가 더 필요해\\\" | skill 확인이 명확화 질문보다 **먼저**입니다. |\\n| \\\"먼저 codebase를 탐색해보자\\\" | skill이 **어떻게** 탐색할지 알려줍니다. 먼저 확인하세요. |\\n| \\\"git/파일을 빠르게 확인할 수 있어\\\" | 파일에는 대화 context가 없습니다. skill을 확인하세요. |\\n| \\\"먼저 정보를 모아보자\\\" | skill이 정보를 **어떻게** 모을지 알려줍니다. |\\n| \\\"이건 정식 skill이 필요 없어\\\" | skill이 존재한다면, 사용하세요. |\\n| \\\"이 skill 기억해\\\" | skill은 진화합니다. 현재 버전을 읽으세요. |\\n| \\\"이건 작업으로 치지 않아\\\" | 행동 = 작업. skill을 확인하세요. |\\n| \\\"이 skill은 과해\\\" | 간단한 일이 복잡해집니다. 사용하세요. |\\n| \\\"이거 하나만 먼저 할게\\\" | 어떤 일이든 하기 **전에** 확인하세요. |\\n| \\\"이게 생산적으로 느껴져\\\" | 규율 없는 행동은 시간을 낭비합니다. skill이 이를 방지합니다. |\\n| \\\"그게 무슨 뜻인지 알아\\\" | 개념을 안다는 것 ≠ skill을 사용하는 것. 호출하세요. |\\n\\n## 플랫폼 적응\\n\\n사용 중인 harness가 아래 목록에 있으면, 특별 지침이 담긴 해당 reference 파일을 읽으세요:\\n\\n- Claude Code: `references/claude-code-tools.md`\\n- Codex: `references/codex-tools.md`\\n- Pi: `references/pi-tools.md`\\n- Antigravity: `references/antigravity-tools.md`\\n- Hermes Agent: `references/hermes-tools.md`\\n- Muse: `references/muse-tools.md`\\n\\n## 사용자 지시\\n\\n사용자 지시(CLAUDE.md, AGENTS.md, GEMINI.md 등, 직접 요청)는 skill보다 우선하고, skill은 다시 기본 동작을 override합니다. skill workflow나 지시는 your human partner가 명시적으로 건너뛰라고 했을 때만 건너뛰세요.\\n</EXTREMELY_IMPORTANT>\"\n  }\n}\n",
+    "stdout": "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"SessionStart\",\n    \"additionalContext\": \"<EXTREMELY_IMPORTANT>\\nYou have superpowers. (이 포크: suberpowers)\\n\\n**Below is the full content of your 'suberpower:using-suberpowers' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\\n\\n---\\nname: using-suberpowers\\ndescription: 모든 대화를 시작할 때 사용합니다 - skill을 찾고 사용하는 방법을 확립하며, 명확화 질문을 포함한 어떤 응답이라도 하기 전에 skill 호출을 요구합니다\\n---\\n\\n<SUBAGENT-STOP>\\n특정 작업을 수행하기 위해 subagent로 dispatch되었다면, 이 skill은 무시하세요.\\n</SUBAGENT-STOP>\\n\\n<EXTREMELY-IMPORTANT>\\n지금 하고 있는 일에 어떤 skill이 적용될 가능성이 1%라도 있다고 생각된다면, **무조건 반드시** 그 skill을 호출해야 합니다.\\n\\n**skill이 작업에 적용된다면, 선택의 여지는 없습니다. 반드시 사용해야 합니다.**\\n\\n이것은 협상의 여지가 없습니다. 어떠한 합리화로도 빠져나갈 수 없습니다.\\n</EXTREMELY-IMPORTANT>\\n\\n## 규칙\\n\\n**응답이나 행동을 하기 전에 관련된 또는 요청된 skill을 호출하세요** — 명확화 질문, codebase 탐색, 파일 확인보다도 먼저입니다. 호출한 skill이 상황에 맞지 않는 것으로 판명되면, 사용하지 않아도 됩니다.\\n\\n**plan mode에 들어가기 전:** 아직 brainstorming하지 않았다면, brainstorming skill을 먼저 호출하세요.\\n\\n그런 다음 \\\"[purpose]를 위해 [skill] 사용\\\"이라고 알리고 skill을 정확히 따르세요. checklist가 있으면 항목마다 todo를 하나씩 만드세요.\\n\\n## skill 우선순위\\n\\n여러 skill이 적용될 때는 프로세스 skill이 먼저입니다 — 프로세스 skill이 접근 방식을 정하고, 구현 skill(frontend-design 등)이 그것을 실행합니다. brainstorming과 systematic-debugging은 Superpowers(suberpowers 포크)에서 가장 흔한 프로세스 skill이지만, 이 규칙은 어떤 프로세스 skill에도 똑같이 적용됩니다.\\n\\n- \\\"X를 만들자\\\" → suberpower:brainstorming 먼저, 그 다음 구현 skill.\\n- \\\"이 버그를 고쳐\\\" → suberpower:systematic-debugging 먼저, 그 다음 도메인 skill.\\n\\n## 위험 신호\\n\\n이런 생각이 들면 STOP - 합리화하고 있는 것입니다:\\n\\n| 생각 | 실제 |\\n|---------|---------|\\n| \\\"이건 그냥 간단한 질문이야\\\" | 질문도 작업입니다. skill을 확인하세요. |\\n| \\\"먼저 context가 더 필요해\\\" | skill 확인이 명확화 질문보다 **먼저**입니다. |\\n| \\\"먼저 codebase를 탐색해보자\\\" | skill이 **어떻게** 탐색할지 알려줍니다. 먼저 확인하세요. |\\n| \\\"git/파일을 빠르게 확인할 수 있어\\\" | 파일에는 대화 context가 없습니다. skill을 확인하세요. |\\n| \\\"먼저 정보를 모아보자\\\" | skill이 정보를 **어떻게** 모을지 알려줍니다. |\\n| \\\"이건 정식 skill이 필요 없어\\\" | skill이 존재한다면, 사용하세요. |\\n| \\\"이 skill 기억해\\\" | skill은 진화합니다. 현재 버전을 읽으세요. |\\n| \\\"이건 작업으로 치지 않아\\\" | 행동 = 작업. skill을 확인하세요. |\\n| \\\"이 skill은 과해\\\" | 간단한 일이 복잡해집니다. 사용하세요. |\\n| \\\"이거 하나만 먼저 할게\\\" | 어떤 일이든 하기 **전에** 확인하세요. |\\n| \\\"이게 생산적으로 느껴져\\\" | 규율 없는 행동은 시간을 낭비합니다. skill이 이를 방지합니다. |\\n| \\\"그게 무슨 뜻인지 알아\\\" | 개념을 안다는 것 ≠ skill을 사용하는 것. 호출하세요. |\\n\\n## 플랫폼 적응\\n\\n사용 중인 harness가 아래 목록에 있으면, 특별 지침이 담긴 해당 reference 파일을 읽으세요:\\n\\n- Claude Code: `references/claude-code-tools.md`\\n- Codex: `references/codex-tools.md`\\n- Pi: `references/pi-tools.md`\\n- Antigravity: `references/antigravity-tools.md`\\n- Hermes Agent: `references/hermes-tools.md`\\n- Muse: `references/muse-tools.md`\\n\\n## 사용자 지시\\n\\n사용자 지시(CLAUDE.md, AGENTS.md, GEMINI.md 등, 직접 요청)는 skill보다 우선하고, skill은 다시 기본 동작을 override합니다. skill workflow나 지시는 your human partner가 명시적으로 건너뛰라고 했을 때만 건너뛰세요.\\n</EXTREMELY_IMPORTANT>\"\n  }\n}\n",
+    "stderr": "",
+    "exit_code": 0,
+    "outcome": "success",
+    "uuid": "fdf98abc-6fa9-4d0a-8532-ec76bab613bc",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa"
+  },
+  {
+    "type": "system",
+    "subtype": "hook_response",
+    "hook_id": "3adbbb89-00c1-40d9-843c-ed9eb73bd592",
+    "hook_name": "SessionStart:startup",
+    "hook_event": "SessionStart",
+    "output": "",
+    "stdout": "",
+    "stderr": "",
+    "exit_code": 0,
+    "outcome": "success",
+    "uuid": "f40a86df-b724-4f8d-b004-6211b74d7437",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa"
+  },
+  {
+    "type": "system",
+    "subtype": "hook_response",
+    "hook_id": "257c33ea-5ef1-47ea-baaa-077d271fbe81",
+    "hook_name": "SessionStart:startup",
+    "hook_event": "SessionStart",
+    "output": "",
+    "stdout": "",
+    "stderr": "",
+    "exit_code": 0,
+    "outcome": "success",
+    "uuid": "18532f70-79c1-4512-b75e-326ed9988d2b",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa"
+  },
+  {
+    "type": "system",
+    "subtype": "init",
+    "cwd": "/Users/bran/personal/claud3",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "tools": [
+      "Task",
+      "Bash",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "DesignSync",
+      "Edit",
+      "EnterWorktree",
+      "ExitWorktree",
+      "ListAgents",
+      "LSP",
+      "Monitor",
+      "NotebookEdit",
+      "PushNotification",
+      "Read",
+      "ReportFindings",
+      "ScheduleWakeup",
+      "SendMessage",
+      "Skill",
+      "TaskStop",
+      "ToolSearch",
+      "WebFetch",
+      "WebSearch",
+      "Workflow",
+      "Write",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_close",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_drag",
+      "mcp__playwright__browser_drop",
+      "mcp__playwright__browser_emulate_media",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_find",
+      "mcp__playwright__browser_handle_dialog",
+      "mcp__playwright__browser_hover",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_navigate_back",
+      "mcp__playwright__browser_network_request",
+      "mcp__playwright__browser_network_requests",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_run_code_unsafe",
+      "mcp__playwright__browser_select_option",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_tabs",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_wait_for",
+      "mcp__safari-mcp-stp__browser_console_messages",
+      "mcp__safari-mcp-stp__browser_dialogs",
+      "mcp__safari-mcp-stp__close_tab",
+      "mcp__safari-mcp-stp__create_tab",
+      "mcp__safari-mcp-stp__evaluate_javascript",
+      "mcp__safari-mcp-stp__get_network_request",
+      "mcp__safari-mcp-stp__get_page_content",
+      "mcp__safari-mcp-stp__list_network_requests",
+      "mcp__safari-mcp-stp__list_tabs",
+      "mcp__safari-mcp-stp__navigate_to_url",
+      "mcp__safari-mcp-stp__page_info",
+      "mcp__safari-mcp-stp__page_interactions",
+      "mcp__safari-mcp-stp__screenshot",
+      "mcp__safari-mcp-stp__set_emulated_media",
+      "mcp__safari-mcp-stp__set_viewport_size",
+      "mcp__safari-mcp-stp__switch_tab",
+      "mcp__safari-mcp-stp__wait_for_navigation"
+    ],
+    "mcp_servers": [
+      {
+        "name": "plugin:figma:figma",
+        "status": "needs-auth",
+        "source": "plugin"
+      },
+      {
+        "name": "playwright",
+        "status": "connected",
+        "source": "user"
+      },
+      {
+        "name": "context7",
+        "status": "pending",
+        "source": "user"
+      },
+      {
+        "name": "safari-mcp-stp",
+        "status": "connected",
+        "source": "user"
+      }
+    ],
+    "model": "claude-haiku-5-5",
+    "permissionMode": "default",
+    "slash_commands": [
+      "investigate",
+      "deep-research",
+      "planning-with-files:plan",
+      "planning-with-files:start",
+      "planning-with-files:status",
+      "claude-sync:sync-backup",
+      "claude-sync:sync-restore",
+      "claude-sync:sync-status",
+      "figma:figma-code-connect",
+      "figma:figma-code-workflows",
+      "figma:figma-create-new-file",
+      "figma:figma-design-to-code",
+      "figma:figma-generate-design",
+      "figma:figma-generate-diagram",
+      "figma:figma-generate-library",
+      "figma:figma-generative-plugins",
+      "figma:figma-implement-motion",
+      "figma:figma-shaders",
+      "figma:figma-spec",
+      "figma:figma-swiftui",
+      "figma:figma-use",
+      "figma:figma-use-figjam",
+      "figma:figma-use-motion",
+      "figma:figma-use-slides",
+      "frontend-design:frontend-design",
+      "planning-with-files:planning-with-files",
+      "skill-creator:skill-creator",
+      "suberpower:brainstorming",
+      "suberpower:diagnosing-suberpowers",
+      "suberpower:dispatching-parallel-agents",
+      "suberpower:executing-plans",
+      "suberpower:finishing-a-development-branch",
+      "suberpower:receiving-code-review",
+      "suberpower:requesting-code-review",
+      "suberpower:subagent-driven-development",
+      "suberpower:systematic-debugging",
+      "suberpower:test-driven-development",
+      "suberpower:using-git-worktrees",
+      "suberpower:using-suberpowers",
+      "suberpower:verification-before-completion",
+      "suberpower:writing-plans",
+      "suberpower:writing-skills",
+      "brownfield-navigator:brownfield-navigator",
+      "brownfield-navigator:harvest-profile",
+      "design",
+      "design-sync",
+      "dataviz",
+      "update-config",
+      "verify",
+      "debug",
+      "code-review",
+      "simplify",
+      "batch",
+      "fewer-permission-prompts",
+      "doctor",
+      "loop",
+      "claude-api",
+      "workflow-authoring",
+      "run",
+      "run-skill-generator",
+      "plugin-authoring",
+      "advisor",
+      "agents",
+      "auto-mode-setup",
+      "autocompact",
+      "clear",
+      "color",
+      "compact",
+      "config",
+      "output-style",
+      "context",
+      "effort",
+      "fast",
+      "focus",
+      "heapdump",
+      "init",
+      "mcp",
+      "import",
+      "model",
+      "__remote-workflow",
+      "workflow-launch-exec",
+      "reload-plugins",
+      "reload-skills",
+      "rename",
+      "security-review",
+      "usage",
+      "insights",
+      "recap",
+      "skill-doctor",
+      "goal",
+      "design-consent",
+      "design-revoke",
+      "list-agents",
+      "team-onboarding",
+      "anthropic-skills:built-in-browser",
+      "anthropic-skills:chrome-browser",
+      "anthropic-skills:computer-use",
+      "anthropic-skills:deep-research",
+      "anthropic-skills:docs",
+      "anthropic-skills:docx",
+      "anthropic-skills:google-workspace",
+      "anthropic-skills:import-memory",
+      "anthropic-skills:morning",
+      "anthropic-skills:pdf",
+      "anthropic-skills:pptx",
+      "anthropic-skills:skill-creator",
+      "anthropic-skills:xlsx"
+    ],
+    "terminal_slash_commands": [
+      "doctor",
+      "color",
+      "focus",
+      "reload-plugins"
+    ],
+    "apiKeySource": "ANTHROPIC_API_KEY",
+    "claude_code_version": "2.1.306",
+    "output_style": "default",
+    "agents": [
+      "claude",
+      "code-reviewer",
+      "Explore",
+      "general-purpose",
+      "go-expert",
+      "ios-expert",
+      "Plan",
+      "refactor-assistant",
+      "security-auditor",
+      "statusline-setup",
+      "swift-expert",
+      "test-writer"
+    ],
+    "skills": [
+      "investigate",
+      "deep-research",
+      "planning-with-files:start",
+      "claude-sync:sync-backup",
+      "claude-sync:sync-restore",
+      "claude-sync:sync-status",
+      "figma:figma-code-connect",
+      "figma:figma-code-workflows",
+      "figma:figma-create-new-file",
+      "figma:figma-design-to-code",
+      "figma:figma-generate-design",
+      "figma:figma-generate-diagram",
+      "figma:figma-generate-library",
+      "figma:figma-generative-plugins",
+      "figma:figma-implement-motion",
+      "figma:figma-shaders",
+      "figma:figma-spec",
+      "figma:figma-swiftui",
+      "figma:figma-use",
+      "figma:figma-use-figjam",
+      "figma:figma-use-motion",
+      "figma:figma-use-slides",
+      "frontend-design:frontend-design",
+      "planning-with-files:planning-with-files",
+      "skill-creator:skill-creator",
+      "suberpower:brainstorming",
+      "suberpower:diagnosing-suberpowers",
+      "suberpower:dispatching-parallel-agents",
+      "suberpower:executing-plans",
+      "suberpower:finishing-a-development-branch",
+      "suberpower:receiving-code-review",
+      "suberpower:requesting-code-review",
+      "suberpower:subagent-driven-development",
+      "suberpower:systematic-debugging",
+      "suberpower:test-driven-development",
+      "suberpower:using-git-worktrees",
+      "suberpower:using-suberpowers",
+      "suberpower:verification-before-completion",
+      "suberpower:writing-plans",
+      "suberpower:writing-skills",
+      "brownfield-navigator:brownfield-navigator",
+      "brownfield-navigator:harvest-profile",
+      "design",
+      "design-sync",
+      "dataviz",
+      "update-config",
+      "verify",
+      "debug",
+      "code-review",
+      "simplify",
+      "batch",
+      "fewer-permission-prompts",
+      "doctor",
+      "loop",
+      "claude-api",
+      "workflow-authoring",
+      "run",
+      "run-skill-generator",
+      "plugin-authoring",
+      "anthropic-skills:built-in-browser",
+      "anthropic-skills:chrome-browser",
+      "anthropic-skills:computer-use",
+      "anthropic-skills:deep-research",
+      "anthropic-skills:docs",
+      "anthropic-skills:docx",
+      "anthropic-skills:google-workspace",
+      "anthropic-skills:import-memory",
+      "anthropic-skills:morning",
+      "anthropic-skills:pdf",
+      "anthropic-skills:pptx",
+      "anthropic-skills:skill-creator",
+      "anthropic-skills:xlsx"
+    ],
+    "plugins": [
+      {
+        "name": "claude-sync",
+        "path": "/Users/bran/.claude/plugins/cache/claude-sync/claude-sync/3.1.2",
+        "source": "claude-sync@claude-sync",
+        "version": "3.1.2"
+      },
+      {
+        "name": "figma",
+        "path": "/Users/bran/.claude/plugins/cache/claude-plugins-official/figma/2.2.157",
+        "source": "figma@claude-plugins-official",
+        "version": "2.2.157"
+      },
+      {
+        "name": "frontend-design",
+        "path": "/Users/bran/.claude/plugins/cache/claude-plugins-official/frontend-design/d1adba47161a",
+        "source": "frontend-design@claude-plugins-official"
+      },
+      {
+        "name": "planning-with-files",
+        "path": "/Users/bran/.claude/plugins/cache/planning-with-files/planning-with-files/2.23.0",
+        "source": "planning-with-files@planning-with-files",
+        "version": "2.23.0"
+      },
+      {
+        "name": "skill-creator",
+        "path": "/Users/bran/.claude/plugins/cache/claude-plugins-official/skill-creator/d1adba47161a",
+        "source": "skill-creator@claude-plugins-official"
+      },
+      {
+        "name": "suberpower",
+        "path": "/Users/bran/.claude/plugins/cache/suberpower/suberpower/2.0.0",
+        "source": "suberpower@suberpower",
+        "version": "2.0.0"
+      },
+      {
+        "name": "swift-lsp",
+        "path": "/Users/bran/.claude/plugins/cache/claude-plugins-official/swift-lsp/1.0.0",
+        "source": "swift-lsp@claude-plugins-official",
+        "version": "1.0.0"
+      },
+      {
+        "name": "brownfield-navigator",
+        "path": "/Users/bran/.claude/plugins/cache/brownfield-navigator/brownfield-navigator/0.1.0",
+        "source": "brownfield-navigator@brownfield-navigator",
+        "version": "0.1.0"
+      },
+      {
+        "name": "cc-plugin-agents-md",
+        "path": "builtin",
+        "source": "cc-plugin-agents-md@builtin"
+      },
+      {
+        "name": "cc-plugin-telemetry",
+        "path": "builtin",
+        "source": "cc-plugin-telemetry@builtin"
+      },
+      {
+        "name": "cc-plugin-plugin-authoring",
+        "path": "builtin",
+        "source": "cc-plugin-plugin-authoring@builtin"
+      }
+    ],
+    "capabilities": [
+      "interrupt_receipt_v1",
+      "interrupt_cancel_queued_v1",
+      "interrupt_send_now_v1",
+      "msg_lifecycle_v1",
+      "request_marker_lists_v1",
+      "sdk_mcp_tools_list_changed",
+      "sdk_mcp_manifests",
+      "mcp_read_resource_v1",
+      "mcp_tool_ui_meta_v1",
+      "ui_surface_v1",
+      "mcp_call_result_not_for_model_v1"
+    ],
+    "analytics_disabled": false,
+    "product_feedback_disabled": false,
+    "uuid": "d6e8d852-e0b7-486c-87b2-d23ab4f7ddb3",
+    "memory_paths": {
+      "auto": "/Users/bran/.claude/projects/-Users-bran-personal-claud3/memory/"
+    },
+    "original_cwd": "/Users/bran/personal/claud3",
+    "additional_directories": [],
+    "messaging_socket_path": "/tmp/cc-socks/53888.sock",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "per_turn_effort_active": true,
+    "view_mode": "default"
+  },
+  {
+    "type": "system",
+    "subtype": "status",
+    "status": "requesting",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "uuid": "f417261f-b846-48ee-bf40-7c9cf4abab62"
+  },
+  {
+    "type": "stream_event",
+    "event": {
+      "type": "message_start",
+      "message": {
+        "model": "claude-haiku-5-5",
+        "id": "msg_011CgErtM3mdNEHUoMBDz2FA",
+        "type": "message",
+        "role": "assistant",
+        "content": [],
+        "container": null,
+        "stop_reason": null,
+        "stop_sequence": null,
+        "stop_details": null,
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 17217,
+          "cache_read_input_tokens": 11354,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 17217,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 3,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "input_transformations": [],
+        "diagnostics": null,
+        "context_management": null
+      }
+    },
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "parent_tool_use_id": null,
+    "uuid": "cf414315-8b13-409b-ad57-78d15dbf1fb4",
+    "ttft_ms": 1311,
+    "thinking_display": "updates",
+    "api_message_id": "msg_011CgErtM3mdNEHUoMBDz2FA"
+  },
+  {
+    "type": "stream_event",
+    "event": {
+      "type": "content_block_start",
+      "index": 0,
+      "content_block": {
+        "type": "text",
+        "text": ""
+      }
+    },
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "parent_tool_use_id": null,
+    "uuid": "2c158422-da2f-4008-ab56-6ecb55fad9e1",
+    "api_message_id": "msg_011CgErtM3mdNEHUoMBDz2FA"
+  },
+  {
+    "type": "stream_event",
+    "event": {
+      "type": "content_block_delta",
+      "index": 0,
+      "delta": {
+        "type": "text_delta",
+        "text": "one"
+      }
+    },
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "parent_tool_use_id": null,
+    "uuid": "eed35e2f-4b12-45a5-bd4f-bb005ad56c4b",
+    "api_message_id": "msg_011CgErtM3mdNEHUoMBDz2FA"
+  },
+  {
+    "type": "assistant",
+    "message": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011CgErtM3mdNEHUoMBDz2FA",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "one"
+        }
+      ],
+      "container": null,
+      "stop_reason": null,
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 17217,
+        "cache_read_input_tokens": 11354,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 17217,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 3,
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "input_transformations": [],
+      "diagnostics": null,
+      "context_management": null
+    },
+    "parent_tool_use_id": null,
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "uuid": "e5420a17-75ac-4d20-9a00-d00086479d7d",
+    "timestamp": "2026-10-21T05:51:48.264Z",
+    "request_id": "req_011CgErtLdyHMM92yAzWtadh"
+  },
+  {
+    "type": "stream_event",
+    "event": {
+      "type": "content_block_stop",
+      "index": 0
+    },
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "parent_tool_use_id": null,
+    "uuid": "9ad1294f-5307-4822-9d08-849254fa3f1e",
+    "api_message_id": "msg_011CgErtM3mdNEHUoMBDz2FA"
+  },
+  {
+    "type": "stream_event",
+    "event": {
+      "type": "message_delta",
+      "delta": {
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "stop_details": null,
+        "container": null
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 17217,
+        "cache_read_input_tokens": 11354,
+        "output_tokens": 3,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3,
+            "cache_read_input_tokens": 11354,
+            "cache_creation_input_tokens": 17217,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 17217,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "type": "message"
+          }
+        ]
+      },
+      "context_management": {
+        "applied_edits": []
+      }
+    },
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "parent_tool_use_id": null,
+    "uuid": "2110f70c-ba73-48fe-8a16-ae9bd2f3328f",
+    "api_message_id": "msg_011CgErtM3mdNEHUoMBDz2FA"
+  },
+  {
+    "type": "stream_event",
+    "event": {
+      "type": "message_stop"
+    },
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "parent_tool_use_id": null,
+    "uuid": "c133353e-97dc-4a24-9697-29f1f7e1d4b0",
+    "api_message_id": "msg_011CgErtM3mdNEHUoMBDz2FA"
+  },
+  {
+    "duration_api_ms": 1337,
+    "stop_reason": "end_turn",
+    "session_id": "c1d7255f-4b72-496c-8353-903026a137fa",
+    "total_cost_usd": 0.002267365,
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 17217,
+      "cache_read_input_tokens": 11354,
+      "output_tokens": 3,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 17217
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 3,
+          "cache_read_input_tokens": 11354,
+          "cache_creation_input_tokens": 17217,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 17217,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-haiku-5-5": {
+        "inputTokens": 2,
+        "outputTokens": 3,
+        "cacheReadInputTokens": 11354,
+        "cacheCreationInputTokens": 17217,
+        "webSearchRequests": 0,
+        "costUSD": 0.002267365,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 0,
+        "canonicalModel": "claude-haiku-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 1,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "one",
+    "ttft_ms": 1803,
+    "type": "result",
+    "duration_ms": 2147,
+    "uuid": "64f19278-1445-4433-8a42-ca389d707589",
+    "ttft_stream_ms": 1801,
+    "time_to_request_ms": 491,
+    "first_content_frame_ms": 1802,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+]
