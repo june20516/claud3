@@ -17,3 +17,13 @@
 3. **실행 중 전환**: `setPermissionMode('default')`와 `setPermissionMode('auto')`가 모두 성공했다. 다음 턴은 `system:status`(바뀐 `permissionMode` 포함) → `system:init`(바뀐 값) 순서로 시작한다.
 4. **확인하지 않은 것**: auto 모드에서 분류기가 실제로 도구 호출을 승인·거부하는지는 보지 않았다(도구 호출 없는 질문만 보냄). 분류기가 판단하지 못하면 `canUseTool`로 묻는다는 것은 SDK 문서 설명이다.
 5. **비용**: 5턴 합계 약 US$0.009.
+
+## 계획 승인 확인 (2026-10-21)
+
+`scripts/probe-plan-mode.ts`(삭제됨)로 `claude-haiku-5-5`를 `permissionMode: "plan"`으로 시작해, README 첫 줄 수정 계획을 세우고 승인을 요청하게 했다(SDK 0.3.306, 키체인 API 키 인증). `canUseTool`에서 `ExitPlanMode`를 받아 시나리오별로 응답하고, 같은 query에 `1+1은? 숫자만.`을 보내 다음 턴 init의 `permissionMode`를 기록했다.
+
+1. **`ExitPlanMode` 입력 필드**: 키는 `plan`(문자열, 마크다운 계획 본문)과 `planFilePath`(문자열, 예: `~/.claude/plans/readme-md-iridescent-valley.md`) 두 개다. 계획 본문 필드는 `plan`, 파일 경로 필드는 `planFilePath`.
+2. **A (`allow` + `updatedInput: input`)**: 승인 직후 `system:status`가 `permissionMode=default`로 바뀌었고, 다음 턴 init도 `default`. 즉 plan 모드를 벗어나 **default**로 돌아간다. 이어진 `Edit`·`Bash`는 probe가 거부했다.
+3. **B (A + `updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }]`)**: 승인 직후 `system:status`가 `acceptEdits`로 바뀌었고 다음 턴 init도 `acceptEdits`. `Edit`는 `canUseTool` 없이 실행되어 README가 실제로 수정되었다(probe 뒤 `git checkout`으로 복구). `setMode`가 의도대로 동작한다.
+4. **계획 파일**: Claude가 `~/.claude/plans/`에 계획 파일을 `Write`로 만든다(plan 모드에서는 `canUseTool` 호출 없이 통과). probe가 만든 파일 2개는 기록 후 삭제했다.
+5. **비용**: A 2턴 약 US$0.0065, B 2턴 약 US$0.0054. 합계 약 US$0.012.
