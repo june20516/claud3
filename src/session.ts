@@ -1,10 +1,14 @@
-import type { CanUseTool, Options, PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, ModelInfo, Options, PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "./asyncQueue.js";
 import { createEventMapper, summarizeToolInput } from "./events.js";
 import type { PermissionPrompter, UiEvent } from "./types.js";
 
 /** Session이 쓰는 query 기능만 추린 타입. SDK의 Query도 이 타입을 만족한다. */
-export type SessionQuery = AsyncIterable<SDKMessage> & { interrupt(): Promise<unknown> };
+export type SessionQuery = AsyncIterable<SDKMessage> & {
+  interrupt(): Promise<unknown>;
+  setModel(model?: string): Promise<void>;
+  supportedModels(): Promise<ModelInfo[]>;
+};
 
 export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => SessionQuery;
 
@@ -16,6 +20,7 @@ export interface SessionDeps {
 }
 
 const DENIED_MESSAGE = "사용자가 거부했습니다";
+const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
 const PENDING_CANCELLED_MESSAGE = "재연결로 대기 중 입력이 취소되었습니다";
 
 function toUserMessage(text: string): SDKUserMessage {
@@ -40,9 +45,15 @@ export class Session {
   private closed = false;
   private currentSessionId: string | undefined;
   private accumulatedCostUsd = 0;
+  private currentModelName: string | undefined;
 
   constructor(private readonly deps: SessionDeps) {
     this.currentSessionId = deps.resume;
+    this.currentModelName = deps.baseOptions.model;
+  }
+
+  get currentModel(): string | undefined {
+    return this.currentModelName;
   }
 
   get sessionId(): string | undefined {
@@ -89,6 +100,35 @@ export class Session {
     }
   }
 
+  async setModel(model: string): Promise<void> {
+    this.assertIdle();
+    if (!this.query) {
+      throw new Error("세션이 시작되지 않았습니다");
+    }
+    await this.query.setModel(model);
+    this.currentModelName = model;
+  }
+
+  async listModels(): Promise<ModelInfo[]> {
+    if (!this.query) {
+      throw new Error("세션이 시작되지 않았습니다");
+    }
+    return this.query.supportedModels();
+  }
+
+  /** 현재 입력 대기열을 닫고 새 query를 연다. resume이 없으면 새 대화, 있으면 그 세션으로 이동한다. */
+  async replace(resume?: string): Promise<void> {
+    this.assertIdle();
+    if (this.closed) {
+      throw new Error("세션이 이미 종료되었습니다");
+    }
+    this.input.close();
+    this.pendingInputs.length = 0;
+    this.accumulatedCostUsd = 0;
+    this.currentSessionId = resume;
+    this.connect(resume, false);
+  }
+
   async close(): Promise<void> {
     if (this.closed) {
       return;
@@ -98,11 +138,22 @@ export class Session {
     this.emit({ type: "session_closed", sessionId: this.currentSessionId, totalCostUsd: this.accumulatedCostUsd });
   }
 
+  private assertIdle(): void {
+    if (this.busy) {
+      throw new Error(BUSY_MESSAGE);
+    }
+  }
+
   private connect(resume: string | undefined, hasReconnected: boolean): void {
     this.input = new AsyncQueue<SDKUserMessage>();
     const query = this.deps.queryFn({
       prompt: this.input,
-      options: { ...this.deps.baseOptions, ...(resume === undefined ? {} : { resume }), canUseTool: this.canUseTool },
+      options: {
+        ...this.deps.baseOptions,
+        ...(this.currentModelName === undefined ? {} : { model: this.currentModelName }),
+        ...(resume === undefined ? {} : { resume }),
+        canUseTool: this.canUseTool,
+      },
     });
     this.query = query;
     void this.consume(query, createEventMapper(this.accumulatedCostUsd), hasReconnected);
@@ -120,18 +171,22 @@ export class Session {
   ): Promise<void> {
     try {
       for await (const message of query) {
+        if (this.query !== query) {
+          return; // replace로 교체된 query의 메시지는 버린다.
+        }
         if (message.type === "system" && message.subtype === "init") {
           this.currentSessionId = message.session_id;
+          this.currentModelName = message.model;
         }
         for (const event of mapEvents(message)) {
           this.handleEvent(event);
         }
       }
-      if (!this.closed) {
+      if (!this.closed && this.query === query) {
         this.handleConnectionLost(new Error("SDK 연결이 종료되었습니다"), hasReconnected);
       }
     } catch (error) {
-      if (!this.closed) {
+      if (!this.closed && this.query === query) {
         this.handleConnectionLost(error, hasReconnected);
       }
     }

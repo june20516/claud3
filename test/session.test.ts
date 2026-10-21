@@ -1,4 +1,4 @@
-import type { CanUseTool, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, ModelInfo, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { Session, type QueryFn } from "../src/session.js";
 import type { PermissionPrompter, UiEvent } from "../src/types.js";
@@ -7,7 +7,11 @@ interface FakeCall {
   options: Options;
   prompts: string[];
   interrupt: Mock<() => Promise<void>>;
+  setModel: Mock<(model?: string) => Promise<void>>;
+  supportedModels: Mock<() => Promise<ModelInfo[]>>;
 }
+
+const MODEL_LIST = [{ value: "opus", displayName: "Opus", description: "d" }] as ModelInfo[];
 
 function sdkMessage(partial: Record<string, unknown>): SDKMessage {
   return { uuid: "u", session_id: "s1", parent_tool_use_id: null, ...partial } as unknown as SDKMessage;
@@ -44,7 +48,13 @@ class FakeSdk {
   }
 
   readonly queryFn: QueryFn = ({ prompt, options }) => {
-    const call: FakeCall = { options, prompts: [], interrupt: vi.fn(async () => {}) };
+    const call: FakeCall = {
+      options,
+      prompts: [],
+      interrupt: vi.fn(async () => {}),
+      setModel: vi.fn(async () => {}),
+      supportedModels: vi.fn(async () => MODEL_LIST),
+    };
     this.calls.push(call);
     const sdk = this;
     async function* run(): AsyncGenerator<SDKMessage, void> {
@@ -64,7 +74,11 @@ class FakeSdk {
         yield resultMessage(0.01 * turnCount);
       }
     }
-    return Object.assign(run(), { interrupt: call.interrupt });
+    return Object.assign(run(), {
+      interrupt: call.interrupt,
+      setModel: call.setModel,
+      supportedModels: call.supportedModels,
+    });
   };
 }
 
@@ -279,5 +293,94 @@ describe("Session", () => {
     await session.close();
     await session.close();
     expect(eventsOfType(events, "session_closed")).toEqual([{ type: "session_closed", sessionId: "s1", totalCostUsd: 0.01 }]);
+  });
+
+  it("setModel: 현재 query에 전달하고 currentModel을 갱신한다", async () => {
+    const { sdk, session } = createSession();
+    session.start();
+    await session.setModel("x");
+    expect(sdk.calls[0]?.setModel).toHaveBeenCalledWith("x");
+    expect(session.currentModel).toBe("x");
+  });
+
+  it("currentModel: baseOptions.model로 시작하고 init의 model로 갱신된다", async () => {
+    const sdk = new FakeSdk();
+    const session = new Session({ queryFn: sdk.queryFn, baseOptions: { model: "base" }, prompter: async () => "allow" });
+    expect(session.currentModel).toBe("base");
+    session.start();
+    session.send("a");
+    await vi.waitFor(() => expect(session.currentModel).toBe("m"));
+  });
+
+  it("listModels: query의 supportedModels 결과를 그대로 돌려주고 busy여도 된다", async () => {
+    const { sdk, session } = createSession();
+    sdk.hold();
+    session.start();
+    session.send("a");
+    await expect(session.listModels()).resolves.toBe(MODEL_LIST);
+    sdk.release();
+  });
+
+  it("replace(): 새 query를 resume 없이 열고 이후 send는 새 query로 가며 비용이 0으로 시작한다", async () => {
+    const { sdk, session, events } = createSession();
+    session.start();
+    session.send("a");
+    await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+    await session.replace();
+    expect(sdk.calls).toHaveLength(2);
+    expect(sdk.calls[1]?.options.resume).toBeUndefined();
+    expect(session.totalCostUsd).toBe(0);
+    session.send("b");
+    await vi.waitFor(() => expect(sdk.calls[1]?.prompts).toEqual(["b"]));
+    expect(sdk.calls[0]?.prompts).toEqual(["a"]);
+    expect(eventsOfType(events, "session_closed")).toHaveLength(0);
+  });
+
+  it("replace(resume): options.resume과 sessionId가 그 값이 된다", async () => {
+    const { sdk, session } = createSession();
+    session.start();
+    await session.replace("abc");
+    expect(sdk.calls[1]?.options.resume).toBe("abc");
+    expect(session.sessionId).toBe("abc");
+  });
+
+  it("replace 후 이전 query의 루프 종료는 error 이벤트나 재연결을 일으키지 않는다", async () => {
+    const { sdk, session, events } = createSession();
+    session.start();
+    session.send("a");
+    await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+    await session.replace();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sdk.calls).toHaveLength(2);
+    expect(eventsOfType(events, "error")).toHaveLength(0);
+    expect(eventsOfType(events, "session_closed")).toHaveLength(0);
+  });
+
+  it("busy 중 setModel/replace는 안내 메시지로 reject한다", async () => {
+    const { sdk, session } = createSession();
+    sdk.hold();
+    session.start();
+    session.send("a");
+    await expect(session.setModel("x")).rejects.toThrow("턴이 끝난 뒤 다시 입력해 주세요");
+    await expect(session.replace()).rejects.toThrow("턴이 끝난 뒤 다시 입력해 주세요");
+    sdk.release();
+  });
+
+  it("setModel로 바꾼 모델은 replace 후 새 query의 options.model로 유지된다", async () => {
+    const { sdk, session } = createSession();
+    session.start();
+    await session.setModel("x");
+    await session.replace();
+    expect(sdk.calls[1]?.options.model).toBe("x");
+  });
+
+  it("replace 후에도 세션 동안 항상 허용한 도구는 prompter 없이 허용된다", async () => {
+    const prompter = vi.fn<PermissionPrompter>(async () => "always");
+    const { sdk, session } = createSession({ prompter });
+    session.start();
+    await canUseTool(sdk.calls[0]!)("Edit", { file_path: "/a" }, toolOptions);
+    await session.replace();
+    await canUseTool(sdk.calls[1]!)("Edit", { file_path: "/b" }, toolOptions);
+    expect(prompter).toHaveBeenCalledTimes(1);
   });
 });
