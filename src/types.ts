@@ -1,9 +1,12 @@
+import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+
 export type UiEvent =
   | { type: "session_start"; sessionId: string; model: string; apiKeySource: string }
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolUseId: string; name: string; summary: string; input: Record<string, unknown> }
   | { type: "tool_end"; toolUseId: string; isError: boolean; summary: string }
   | { type: "turn_result"; costUsd: number; totalCostUsd: number; isError: boolean; errorMessage?: string }
+  | { type: "permission_mode"; mode: PermissionMode }
   | { type: "error"; message: string }
   | { type: "session_closed"; sessionId?: string; totalCostUsd: number };
 

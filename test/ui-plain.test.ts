@@ -62,6 +62,12 @@ describe("formatEvent", () => {
     expect(text.indexOf("⏺ Edit(a.ts)")).toBeLessThan(text.indexOf("- old"));
   });
 
+  it("permission_mode는 '권한 모드: <설명>' 한 줄", () => {
+    expect(stripVTControlCharacters(formatEvent({ type: "permission_mode", mode: "plan" }))).toBe(
+      "\n권한 모드: plan — 계획만 세우고 도구 실행 안 함\n",
+    );
+  });
+
   it("성공한 tool_end는 빈 문자열", () => {
     expect(formatEvent({ type: "tool_end", toolUseId: "t1", isError: false, summary: "ok" })).toBe("");
   });

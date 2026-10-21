@@ -7,6 +7,7 @@ import { parseInput, runCommand } from "../commands.js";
 import type { CommandContext } from "../commands.js";
 import { formatToolDiff } from "../diffView.js";
 import { createMarkdownRenderer } from "../markdown.js";
+import { describePermissionMode } from "../permissionModes.js";
 import type { Session } from "../session.js";
 import type { PermissionDecision, PermissionPrompter, UiEvent } from "../types.js";
 import { remainingCreditUsd } from "../usageStore.js";
@@ -111,6 +112,8 @@ export function formatEvent(event: UiEvent): string {
       lines.push(styleText("dim", `── ${usd(event.costUsd)} · 누적 ${usd(event.totalCostUsd)}`));
       return `\n${lines.join("\n")}\n`;
     }
+    case "permission_mode":
+      return `\n${styleText("dim", `권한 모드: ${describePermissionMode(event.mode)}`)}\n`;
     case "error":
       return `\n${styleText("red", `오류: ${event.message}`)}\n`;
     case "session_closed": {
