@@ -37,6 +37,16 @@ describe("parseArgs", () => {
   it("--version", () => {
     expect(parseArgs(["--version"]).version).toBe(true);
   });
+
+  it("--permission-mode 값을 읽는다", () => {
+    expect(parseArgs(["--permission-mode", "plan"]).permissionMode).toBe("plan");
+  });
+
+  it("잘못된 --permission-mode는 잘못된 이름 문구로 던진다", () => {
+    expect(() => parseArgs(["--permission-mode", "Plan"])).toThrow(
+      "알 수 없는 권한 모드: Plan (default, acceptEdits, plan, auto)",
+    );
+  });
 });
 
 describe("readVersion", () => {
@@ -50,5 +60,15 @@ describe("claud3 --version", () => {
     const result = spawnSync("node_modules/.bin/tsx", ["src/main.ts", "--version"], { encoding: "utf8" });
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe(packageVersion);
+  });
+});
+
+describe("claud3 --permission-mode", () => {
+  it("잘못된 값이면 종료 코드 1과 잘못된 이름 문구를 stderr에 출력한다", () => {
+    const result = spawnSync("node_modules/.bin/tsx", ["src/main.ts", "--permission-mode", "bogus"], {
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("알 수 없는 권한 모드: bogus (default, acceptEdits, plan, auto)");
   });
 });

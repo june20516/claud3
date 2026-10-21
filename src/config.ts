@@ -1,9 +1,11 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import type { SelectablePermissionMode } from "./permissionModes.js";
 
 export interface BaseOptionsParams {
   cwd: string;
   apiKey: string;
   model?: string;
+  permissionMode?: SelectablePermissionMode;
 }
 
 /**
@@ -11,7 +13,7 @@ export interface BaseOptionsParams {
  * 플러그인은 settingSources의 enabledPlugins로 자동 로드되므로 따로 넘기지 않는다
  * (docs/suberpowers/notes/probe-results.md 3번).
  */
-export function buildBaseOptions({ cwd, apiKey, model }: BaseOptionsParams): Options {
+export function buildBaseOptions({ cwd, apiKey, model, permissionMode }: BaseOptionsParams): Options {
   return {
     cwd,
     settingSources: ["user", "project", "local"],
@@ -19,5 +21,6 @@ export function buildBaseOptions({ cwd, apiKey, model }: BaseOptionsParams): Opt
     includePartialMessages: true,
     env: { ...process.env, ANTHROPIC_API_KEY: apiKey },
     ...(model === undefined ? {} : { model }),
+    ...(permissionMode === undefined ? {} : { permissionMode }),
   };
 }
