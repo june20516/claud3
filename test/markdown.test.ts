@@ -53,6 +53,16 @@ describe("renderMarkdownLine", () => {
     expect(plain("`a **b** c`")).toBe("a **b** c");
   });
 
+  it("굵게 안에 인라인 코드가 있어도 굵게를 적용한다", () => {
+    expect(plain("**`src/session.ts`**")).toBe("src/session.ts");
+    expect(plain("**`a.ts` (새 파일)** 설명")).toBe("a.ts (새 파일) 설명");
+    expect(plain("앞 **굵게 `코드` 안** 뒤")).toBe("앞 굵게 코드 안 뒤");
+
+    const rendered = renderMarkdownLine("**`a.ts` 파일**", { inCodeBlock: false });
+    expect(rendered.startsWith(BOLD)).toBe(true);
+    expect(rendered).toContain(CYAN);
+  });
+
   it("링크를 텍스트와 흐린 URL로 바꾼다", () => {
     expect(plain("[문서](https://example.com)")).toBe("문서 (https://example.com)");
   });
