@@ -89,38 +89,54 @@ export function createPlainUi({ input, output }: PlainUiIo): PlainUi {
     }
   };
 
-  // 질문이 Ctrl+C로 취소되면 undefined를 돌려준다.
-  const ask = (question: string): Promise<string | undefined> =>
+  type AskResult = { kind: "answer"; text: string } | { kind: "cancelled"; by: "user" | "sdk" };
+
+  // 사용자의 Ctrl+C(activeQuestion.abort)나 SDK의 취소 signal로 질문이 닫힐 수 있다.
+  const ask = (question: string, sdkSignal: AbortSignal | undefined): Promise<AskResult> =>
     new Promise((resolve) => {
       const controller = new AbortController();
       activeQuestion = controller;
-      controller.signal.addEventListener(
+      const signal = sdkSignal ? AbortSignal.any([controller.signal, sdkSignal]) : controller.signal;
+      signal.addEventListener(
         "abort",
         () => {
           activeQuestion = undefined;
-          resolve(undefined);
+          resolve({ kind: "cancelled", by: sdkSignal?.aborted ? "sdk" : "user" });
         },
         { once: true },
       );
-      rl.question(question, { signal: controller.signal }, (answer) => {
+      rl.question(question, { signal }, (answer) => {
         activeQuestion = undefined;
-        resolve(answer);
+        resolve({ kind: "answer", text: answer });
       });
     });
 
-  const prompter: PermissionPrompter = async ({ toolName, summary }) => {
+  const askPermission: PermissionPrompter = async ({ toolName, summary, signal }) => {
     const question = `\n${toolName}(${summary}) 허용할까요? [y]이번만 [n]거부 [a]세션 동안 항상 › `;
     for (;;) {
-      const answer = await ask(question);
-      if (answer === undefined) {
-        void activeSession?.interrupt();
+      if (signal?.aborted) {
         return "deny";
       }
-      const decision = parseDecision(answer);
+      const result = await ask(question, signal);
+      if (result.kind === "cancelled") {
+        if (result.by === "user") {
+          void activeSession?.interrupt();
+        }
+        return "deny";
+      }
+      const decision = parseDecision(result.text);
       if (decision) {
         return decision;
       }
     }
+  };
+
+  // readline은 질문을 한 번에 하나만 받을 수 있으므로 동시에 온 권한 요청을 차례로 묻는다.
+  let permissionQueue: Promise<unknown> = Promise.resolve();
+  const prompter: PermissionPrompter = (request) => {
+    const decision = permissionQueue.then(() => askPermission(request));
+    permissionQueue = decision.catch(() => undefined);
+    return decision;
   };
 
   const interruptTurn = (session: Session): void => {

@@ -81,7 +81,12 @@ export class Session {
       return;
     }
     this.pendingInputs.length = 0;
-    await this.query.interrupt();
+    try {
+      await this.query.interrupt();
+    } catch (error) {
+      // 연결이 막 끊긴 순간에는 interrupt가 실패할 수 있다. 프로세스를 죽이지 않고 알리기만 한다.
+      this.emit({ type: "error", message: `중단 요청 실패: ${errorText(error)}` });
+    }
   }
 
   async close(): Promise<void> {
@@ -162,11 +167,11 @@ export class Session {
     void this.close();
   }
 
-  private readonly canUseTool: CanUseTool = async (toolName, input): Promise<PermissionResult> => {
+  private readonly canUseTool: CanUseTool = async (toolName, input, { signal }): Promise<PermissionResult> => {
     if (this.alwaysAllowedTools.has(toolName)) {
       return { behavior: "allow", updatedInput: input };
     }
-    const decision = await this.deps.prompter({ toolName, summary: summarizeToolInput(toolName, input) });
+    const decision = await this.deps.prompter({ toolName, summary: summarizeToolInput(toolName, input), signal });
     if (decision === "deny") {
       return { behavior: "deny", message: DENIED_MESSAGE };
     }

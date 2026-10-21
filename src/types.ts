@@ -10,6 +10,8 @@ export type UiEvent =
 export interface PermissionRequest {
   toolName: string;
   summary: string;
+  /** SDK가 이 권한 요청을 취소하면 abort된다. */
+  signal?: AbortSignal;
 }
 
 export type PermissionDecision = "allow" | "deny" | "always";

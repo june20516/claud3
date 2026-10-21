@@ -202,12 +202,24 @@ describe("Session", () => {
     expect(prompter).toHaveBeenCalledTimes(1);
   });
 
-  it("canUseTool: prompter에 toolName과 summarizeToolInput 결과를 넘긴다", async () => {
+  it("canUseTool: prompter에 toolName, summarizeToolInput 결과, SDK signal을 넘긴다", async () => {
     const prompter = vi.fn<PermissionPrompter>(async () => "allow");
     const { sdk, session } = createSession({ prompter });
     session.start();
     await canUseTool(sdk.calls[0]!)("Bash", { command: "npm test\nmore" }, toolOptions);
-    expect(prompter).toHaveBeenCalledWith({ toolName: "Bash", summary: "npm test" });
+    expect(prompter).toHaveBeenCalledWith({ toolName: "Bash", summary: "npm test", signal: toolOptions.signal });
+  });
+
+  it("interrupt: query.interrupt가 reject해도 던지지 않고 error 이벤트로 알린다", async () => {
+    const { sdk, session, events } = createSession();
+    sdk.hold();
+    session.start();
+    session.send("first");
+    await vi.waitFor(() => expect(sdk.calls[0]?.prompts).toEqual(["first"]));
+    sdk.calls[0]!.interrupt.mockRejectedValueOnce(new Error("transport closed"));
+
+    await expect(session.interrupt()).resolves.toBeUndefined();
+    expect(eventsOfType(events, "error")[0]?.message).toContain("transport closed");
   });
 
   it("메시지 루프가 throw → error 이벤트, sessionId로 resume해 한 번 재연결하고 누적 비용을 이어간다", async () => {

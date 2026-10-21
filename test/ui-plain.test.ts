@@ -69,7 +69,53 @@ describe("formatEvent", () => {
   });
 });
 
+function createTestUi() {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const state = { written: "" };
+  output.on("data", (chunk: Buffer) => {
+    state.written += chunk.toString();
+  });
+  const ui = createPlainUi({ input, output });
+  const questionCount = (): number => state.written.split("허용할까요?").length - 1;
+  return { input, state, ui, questionCount };
+}
+
 describe("createPlainUi prompter", () => {
+  it("동시에 온 권한 요청 두 개를 차례로 묻고 각각의 답을 돌려준다", async () => {
+    const { input, ui, questionCount } = createTestUi();
+
+    const first = ui.prompter({ toolName: "WebFetch", summary: "a" });
+    const second = ui.prompter({ toolName: "WebFetch", summary: "b" });
+    await vi.waitFor(() => expect(questionCount()).toBe(1));
+    input.write("y\n");
+    await expect(first).resolves.toBe("allow");
+
+    await vi.waitFor(() => expect(questionCount()).toBe(2));
+    input.write("n\n");
+    await expect(second).resolves.toBe("deny");
+  });
+
+  it("SDK가 signal로 요청을 취소하면 질문을 닫고 deny를 돌려준다", async () => {
+    const { ui, questionCount } = createTestUi();
+    const controller = new AbortController();
+
+    const decision = ui.prompter({ toolName: "Bash", summary: "ls", signal: controller.signal });
+    await vi.waitFor(() => expect(questionCount()).toBe(1));
+    controller.abort();
+
+    await expect(decision).resolves.toBe("deny");
+  });
+
+  it("이미 취소된 요청은 묻지 않고 deny를 돌려준다", async () => {
+    const { ui, questionCount } = createTestUi();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(ui.prompter({ toolName: "Bash", summary: "ls", signal: controller.signal })).resolves.toBe("deny");
+    expect(questionCount()).toBe(0);
+  });
+
   it("잘못된 답 'x' 후 'y' → 다시 묻고 allow", async () => {
     const input = new PassThrough();
     const output = new PassThrough();
