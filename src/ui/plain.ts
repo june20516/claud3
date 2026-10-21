@@ -3,12 +3,14 @@ import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { styleText } from "node:util";
+import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { parseInput, runCommand } from "../commands.js";
 import type { CommandContext } from "../commands.js";
 import { formatToolDiff } from "../diffView.js";
 import { createMarkdownRenderer } from "../markdown.js";
+import { describePermissionMode, nextPermissionMode } from "../permissionModes.js";
 import type { Session } from "../session.js";
-import type { PermissionDecision, PermissionPrompter, UiEvent } from "../types.js";
+import type { PermissionDecision, PermissionPrompter, PermissionRequest, UiEvent } from "../types.js";
 import { remainingCreditUsd } from "../usageStore.js";
 import type { UsageSnapshot } from "../usageStore.js";
 
@@ -17,6 +19,7 @@ const CONTINUATION_PROMPT = "… ";
 const HISTORY_SIZE = 500;
 const HISTORY_FILE_MODE = 0o600;
 const EXIT_CONFIRM_WINDOW_MS = 2000;
+const PLAN_QUESTION = "\n계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획 › ";
 const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
 
 export interface PlainUiIo {
@@ -62,10 +65,19 @@ export class MultilineBuffer {
   }
 }
 
-export function formatStatusLine(params: { model?: string; sessionCostUsd: number; remainingCreditUsd: number }): string {
-  const model = params.model ?? "기본 모델";
-  const text = `${model} · 세션 ${usd(params.sessionCostUsd)} · 크레딧 잔여 추정 $${params.remainingCreditUsd.toFixed(2)}`;
-  return styleText("dim", text);
+export function formatStatusLine(params: {
+  model?: string;
+  permissionMode?: PermissionMode;
+  sessionCostUsd: number;
+  remainingCreditUsd: number;
+}): string {
+  const parts = [
+    params.model ?? "기본 모델",
+    ...(params.permissionMode === undefined ? [] : [params.permissionMode]),
+    `세션 ${usd(params.sessionCostUsd)}`,
+    `크레딧 잔여 추정 $${params.remainingCreditUsd.toFixed(2)}`,
+  ];
+  return styleText("dim", parts.join(" · "));
 }
 
 function usd(amount: number): string {
@@ -86,6 +98,33 @@ export function parseDecision(answer: string): PermissionDecision | undefined {
     default:
       return undefined;
   }
+}
+
+export function parsePlanDecision(answer: string): PermissionDecision | undefined {
+  switch (answer.trim().toLowerCase()) {
+    case "y":
+    case "yes":
+      return "allow";
+    case "e":
+      return "allowAcceptEdits";
+    case "n":
+    case "no":
+      return "deny";
+    default:
+      return undefined;
+  }
+}
+
+/** 계획 질문 앞에 보일 내용. 본문, 계획 파일 경로, 도구 요약 순으로 있는 것 하나만 보인다. */
+function formatPlan(request: PermissionRequest, plan: { text?: string; filePath?: string }): string {
+  if (plan.text !== undefined && plan.text.trim() !== "") {
+    const renderer = createMarkdownRenderer();
+    return `\n${renderer.push(`${plan.text}\n`)}${renderer.flush()}`;
+  }
+  if (plan.filePath !== undefined && plan.filePath !== "") {
+    return `\n계획 파일: ${plan.filePath}\n`;
+  }
+  return `\n${request.toolName}(${request.summary})\n`;
 }
 
 export function formatEvent(event: UiEvent): string {
@@ -111,6 +150,8 @@ export function formatEvent(event: UiEvent): string {
       lines.push(styleText("dim", `── ${usd(event.costUsd)} · 누적 ${usd(event.totalCostUsd)}`));
       return `\n${lines.join("\n")}\n`;
     }
+    case "permission_mode":
+      return `\n${styleText("dim", `권한 모드: ${describePermissionMode(event.mode)}`)}\n`;
     case "error":
       return `\n${styleText("red", `오류: ${event.message}`)}\n`;
     case "session_closed": {
@@ -227,8 +268,16 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
       });
     });
 
-  const askPermission: PermissionPrompter = async ({ toolName, summary, signal }) => {
-    const question = `\n${toolName}(${summary}) 허용할까요? [y]이번만 [n]거부 [a]세션 동안 항상 › `;
+  const askPermission: PermissionPrompter = async (request) => {
+    const { toolName, summary, signal, plan } = request;
+    const question =
+      plan === undefined
+        ? `\n${toolName}(${summary}) 허용할까요? [y]이번만 [n]거부 [a]세션 동안 항상 › `
+        : PLAN_QUESTION;
+    const parse = plan === undefined ? parseDecision : parsePlanDecision;
+    if (plan !== undefined && !signal?.aborted) {
+      write(formatPlan(request, plan));
+    }
     for (;;) {
       if (signal?.aborted) {
         return "deny";
@@ -240,7 +289,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
         }
         return "deny";
       }
-      const decision = parseDecision(result.text);
+      const decision = parse(result.text);
       if (decision) {
         return decision;
       }
@@ -272,11 +321,19 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
         }
       };
 
+      // 입력 중이던 줄을 보존한 채 프롬프트를 다시 그린다.
+      const redrawPromptIfIdle = (): void => {
+        if (!session.isBusy) {
+          rl.prompt(true);
+        }
+      };
+
       const printStatusLine = async (costUsd: number): Promise<void> => {
         try {
           const snapshot = await recordUsage(costUsd);
           const statusLine = formatStatusLine({
             model: session.currentModel,
+            permissionMode: session.currentPermissionMode,
             sessionCostUsd: session.totalCostUsd,
             remainingCreditUsd: remainingCreditUsd(snapshot),
           });
@@ -298,6 +355,9 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
         }
         if (event.type === "turn_result" || event.type === "error") {
           promptIfIdle();
+        }
+        if (event.type === "permission_mode") {
+          redrawPromptIfIdle();
         }
         if (event.type === "session_closed") {
           rl.close();
@@ -368,9 +428,17 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
 
       if (terminal) {
         emitKeypressEvents(input);
-        input.on("keypress", (_text: string | undefined, key: { name?: string } | undefined) => {
+        input.on("keypress", (_text: string | undefined, key: { name?: string; shift?: boolean } | undefined) => {
           if (key?.name === "escape" && !activeQuestion && session.isBusy) {
             interruptTurn(session);
+          }
+          if (key?.name === "tab" && key.shift === true && !activeQuestion) {
+            session
+              .setPermissionMode(nextPermissionMode(session.currentPermissionMode))
+              .catch((error: unknown) => {
+                write(formatEvent({ type: "error", message: errorText(error) }));
+                redrawPromptIfIdle();
+              });
           }
         });
       }

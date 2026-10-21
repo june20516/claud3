@@ -1,13 +1,14 @@
-import type { CanUseTool, ModelInfo, Options, PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, ModelInfo, Options, PermissionMode, PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "./asyncQueue.js";
 import { createEventMapper, summarizeToolInput } from "./events.js";
-import type { PermissionPrompter, UiEvent } from "./types.js";
+import type { PermissionPrompter, PermissionRequest, UiEvent } from "./types.js";
 
 /** Session이 쓰는 query 기능만 추린 타입. SDK의 Query도 이 타입을 만족한다. */
 export type SessionQuery = AsyncIterable<SDKMessage> & {
   interrupt(): Promise<unknown>;
   setModel(model?: string): Promise<void>;
   supportedModels(): Promise<ModelInfo[]>;
+  setPermissionMode(mode: PermissionMode): Promise<void>;
 };
 
 export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => SessionQuery;
@@ -20,11 +21,24 @@ export interface SessionDeps {
 }
 
 const DENIED_MESSAGE = "사용자가 거부했습니다";
+const PLAN_DENIED_MESSAGE = "사용자가 계획을 승인하지 않았습니다. 계획을 계속 다듬어 주세요";
+const EXIT_PLAN_MODE_TOOL = "ExitPlanMode";
 const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
 const PENDING_CANCELLED_MESSAGE = "재연결로 대기 중 입력이 취소되었습니다";
 
 function toUserMessage(text: string): SDKUserMessage {
   return { type: "user", message: { role: "user", content: text }, parent_tool_use_id: null };
+}
+
+function extractPlan(input: Record<string, unknown>): NonNullable<PermissionRequest["plan"]> {
+  const plan: NonNullable<PermissionRequest["plan"]> = {};
+  if (typeof input.plan === "string") {
+    plan.text = input.plan;
+  }
+  if (typeof input.planFilePath === "string") {
+    plan.filePath = input.planFilePath;
+  }
+  return plan;
 }
 
 function errorText(error: unknown): string {
@@ -46,10 +60,19 @@ export class Session {
   private currentSessionId: string | undefined;
   private accumulatedCostUsd = 0;
   private currentModelName: string | undefined;
+  private currentPermissionModeValue: PermissionMode | undefined;
+  /** SDK에 보낸 뒤 아직 끝나지 않은 권한 모드 변경 수. 0이 아니면 SDK 보고값을 무시한다. */
+  private inFlightModeChanges = 0;
+  private latestModeRequestId = 0;
 
   constructor(private readonly deps: SessionDeps) {
     this.currentSessionId = deps.resume;
     this.currentModelName = deps.baseOptions.model;
+    this.currentPermissionModeValue = deps.baseOptions.permissionMode;
+  }
+
+  get currentPermissionMode(): PermissionMode | undefined {
+    return this.currentPermissionModeValue;
   }
 
   get currentModel(): string | undefined {
@@ -109,6 +132,37 @@ export class Session {
     this.currentModelName = model;
   }
 
+  /** 권한 모드를 바꾼다. SDK 실패는 reject하지 않고 값을 되돌린 뒤 이벤트로 알린다. */
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    if (this.closed) {
+      throw new Error("세션이 이미 종료되었습니다");
+    }
+    const previous = this.currentPermissionModeValue;
+    if (previous === mode) {
+      return;
+    }
+    this.currentPermissionModeValue = mode;
+    const requestId = ++this.latestModeRequestId;
+    this.emit({ type: "permission_mode", mode });
+    const query = this.query;
+    if (!query) {
+      return; // 시작 전에는 값만 저장하고 connect가 options로 넘긴다.
+    }
+    this.inFlightModeChanges += 1;
+    try {
+      await query.setPermissionMode(mode);
+    } catch (error) {
+      // 더 새로운 요청이 있으면(같은 모드를 다시 요청한 경우 포함) 되돌리지 않는다.
+      if (this.latestModeRequestId === requestId) {
+        this.currentPermissionModeValue = previous;
+        this.emit({ type: "permission_mode", mode: previous ?? "default" });
+      }
+      this.emit({ type: "error", message: `권한 모드를 바꾸지 못했습니다: ${errorText(error)}` });
+    } finally {
+      this.inFlightModeChanges -= 1;
+    }
+  }
+
   async listModels(): Promise<ModelInfo[]> {
     if (!this.query) {
       throw new Error("세션이 시작되지 않았습니다");
@@ -151,6 +205,7 @@ export class Session {
       options: {
         ...this.deps.baseOptions,
         ...(this.currentModelName === undefined ? {} : { model: this.currentModelName }),
+        ...(this.currentPermissionModeValue === undefined ? {} : { permissionMode: this.currentPermissionModeValue }),
         ...(resume === undefined ? {} : { resume }),
         canUseTool: this.canUseTool,
       },
@@ -178,6 +233,9 @@ export class Session {
           this.currentSessionId = message.session_id;
           this.currentModelName = message.model;
         }
+        if (message.type === "system" && (message.subtype === "init" || message.subtype === "status")) {
+          this.applyReportedPermissionMode(message.permissionMode);
+        }
         for (const event of mapEvents(message)) {
           this.handleEvent(event);
         }
@@ -189,6 +247,17 @@ export class Session {
       if (!this.closed && this.query === query) {
         this.handleConnectionLost(error, hasReconnected);
       }
+    }
+  }
+
+  private applyReportedPermissionMode(reported: PermissionMode | undefined): void {
+    if (reported === undefined || this.inFlightModeChanges > 0 || reported === this.currentPermissionModeValue) {
+      return;
+    }
+    const hadValue = this.currentPermissionModeValue !== undefined;
+    this.currentPermissionModeValue = reported;
+    if (hadValue) {
+      this.emit({ type: "permission_mode", mode: reported });
     }
   }
 
@@ -226,9 +295,23 @@ export class Session {
     if (this.alwaysAllowedTools.has(toolName)) {
       return { behavior: "allow", updatedInput: input };
     }
-    const decision = await this.deps.prompter({ toolName, summary: summarizeToolInput(toolName, input), signal });
+    const isPlanApproval = toolName === EXIT_PLAN_MODE_TOOL;
+    const request: PermissionRequest = { toolName, summary: summarizeToolInput(toolName, input), signal };
+    if (isPlanApproval) {
+      request.plan = extractPlan(input);
+    }
+    const decision = await this.deps.prompter(request);
     if (decision === "deny") {
-      return { behavior: "deny", message: DENIED_MESSAGE };
+      return { behavior: "deny", message: isPlanApproval ? PLAN_DENIED_MESSAGE : DENIED_MESSAGE };
+    }
+    if (isPlanApproval) {
+      return decision === "allowAcceptEdits"
+        ? {
+            behavior: "allow",
+            updatedInput: input,
+            updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
+          }
+        : { behavior: "allow", updatedInput: input };
     }
     if (decision === "always") {
       this.alwaysAllowedTools.add(toolName);

@@ -1,4 +1,4 @@
-import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
+import type { ModelInfo, PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { HELP_TEXT, parseInput, runCommand } from "../src/commands.js";
 import type { CommandContext, ParsedInput } from "../src/commands.js";
@@ -26,6 +26,8 @@ function createContext(overrides: Partial<CommandContext["session"]> = {}) {
     setModel: vi.fn(async (_model: string) => {}),
     listModels: vi.fn(async () => MODELS),
     replace: vi.fn(async (_resume?: string) => {}),
+    currentPermissionMode: "default" as PermissionMode | undefined,
+    setPermissionMode: vi.fn(async (_mode: PermissionMode) => {}),
     ...overrides,
   } satisfies CommandContext["session"];
   const context: CommandContext = {
@@ -56,6 +58,11 @@ describe("parseInput", () => {
 
   it("명령 이름은 대소문자를 구분한다", () => {
     expect(parseInput("/COST").kind).toBe("prompt");
+  });
+
+  it("/mode는 command로 판정한다", () => {
+    expect(parseInput("/mode")).toEqual({ kind: "command", name: "mode", argument: "" });
+    expect(parseInput("/mode plan")).toEqual({ kind: "command", name: "mode", argument: "plan" });
   });
 
   it("일반 문장은 prompt다", () => {
@@ -178,6 +185,72 @@ describe("runCommand", () => {
     });
     await runCommand(command("model", "x"), context);
     expect(printed).toEqual(["세션이 시작되지 않았습니다"]);
+  });
+
+  it("/mode는 현재 모드와 선택지를 출력한다", async () => {
+    const { context, printed } = createContext({ currentPermissionMode: "plan" });
+    await runCommand(command("mode"), context);
+    expect(printed).toEqual([
+      [
+        "현재 모드: plan",
+        "  default      위험한 도구는 매번 묻기",
+        "  acceptEdits  파일 편집은 묻지 않고 허용",
+        "* plan         계획만 세우고 도구 실행 안 함",
+        "  auto         분류기가 판단, 애매하면 묻기",
+        "바꾸려면: /mode <이름> · Shift+Tab",
+      ].join("\n"),
+    ]);
+  });
+
+  it("/mode는 현재 모드를 모르면 알 수 없음, 목록 밖 모드면 * 없이 이름을 표시한다", async () => {
+    const unknown = createContext({ currentPermissionMode: undefined });
+    await runCommand(command("mode"), unknown.context);
+    expect(unknown.printed[0]).toMatch(/^현재 모드: 알 수 없음\n/);
+    expect(unknown.printed[0]).not.toContain("*");
+
+    const dontAsk = createContext({ currentPermissionMode: "dontAsk" });
+    await runCommand(command("mode"), dontAsk.context);
+    expect(dontAsk.printed[0]).toMatch(/^현재 모드: dontAsk\n/);
+    expect(dontAsk.printed[0]).not.toContain("*");
+  });
+
+  it("/mode <이름>은 setPermissionMode를 호출하고 직접 출력하지 않는다", async () => {
+    const { context, session, printed } = createContext();
+    await runCommand(command("mode", "plan"), context);
+    expect(session.setPermissionMode).toHaveBeenCalledWith("plan");
+    expect(printed).toEqual([]);
+  });
+
+  it("/mode <이름>은 실행 중(busy)에도 동작한다", async () => {
+    const { context, session } = createContext({ isBusy: true });
+    await runCommand(command("mode", "acceptEdits"), context);
+    expect(session.setPermissionMode).toHaveBeenCalledWith("acceptEdits");
+  });
+
+  it("/mode <현재 모드>는 호출 없이 안내한다", async () => {
+    const { context, session, printed } = createContext({ currentPermissionMode: "plan" });
+    await runCommand(command("mode", "plan"), context);
+    expect(session.setPermissionMode).not.toHaveBeenCalled();
+    expect(printed).toEqual(["이미 plan 모드입니다"]);
+  });
+
+  it("/mode 잘못된 이름은 호출 없이 안내한다", async () => {
+    const { context, session, printed } = createContext();
+    await runCommand(command("mode", "Plan"), context);
+    expect(session.setPermissionMode).not.toHaveBeenCalled();
+    expect(printed).toEqual(["알 수 없는 권한 모드: Plan (default, acceptEdits, plan, auto)"]);
+  });
+
+  it("HELP_TEXT에 권한 모드 안내가 있다", () => {
+    for (const line of [
+      "  /mode            현재 권한 모드와 선택지",
+      "  /mode <이름>     권한 모드 바꾸기 (default, acceptEdits, plan, auto)",
+      "  Shift+Tab        권한 모드 순환 (default → acceptEdits → plan → auto)",
+      "  계획 승인(plan 모드): y 승인 · e 승인+편집 자동 허용 · n 계속 계획",
+      "  claud3 --permission-mode <이름>  권한 모드 지정해 시작",
+    ]) {
+      expect(HELP_TEXT.split("\n")).toContain(line);
+    }
   });
 
   it("/help에 개발판·안정판 안내가 실행 옵션 뒤에 있다", () => {

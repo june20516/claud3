@@ -18,6 +18,11 @@ describe("buildBaseOptions", () => {
     expect("model" in options).toBe(false);
   });
 
+  it("permissionMode를 주면 옵션에 넣고, 생략하면 키가 없다", () => {
+    expect(buildBaseOptions({ cwd: "/work", apiKey: "sk-test", permissionMode: "auto" }).permissionMode).toBe("auto");
+    expect("permissionMode" in buildBaseOptions({ cwd: "/work", apiKey: "sk-test" })).toBe(false);
+  });
+
   it("env.ANTHROPIC_API_KEY에 키를 넣고 process.env의 다른 값은 유지", () => {
     process.env.CLAUD3_TEST_MARKER = "kept";
     const options = buildBaseOptions({ cwd: "/work", apiKey: "sk-test" });

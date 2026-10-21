@@ -1,8 +1,14 @@
+import {
+  PERMISSION_MODES,
+  PERMISSION_MODE_DESCRIPTIONS,
+  parsePermissionMode,
+  unknownPermissionModeMessage,
+} from "./permissionModes.js";
 import type { Session } from "./session.js";
 import { remainingCreditUsd } from "./usageStore.js";
 import type { UsageSnapshot } from "./usageStore.js";
 
-const COMMAND_NAMES = ["cost", "clear", "model", "resume", "help"] as const;
+const COMMAND_NAMES = ["cost", "clear", "model", "mode", "resume", "help"] as const;
 type CommandName = (typeof COMMAND_NAMES)[number];
 
 export type ParsedInput =
@@ -12,7 +18,7 @@ export type ParsedInput =
 export interface CommandContext {
   session: Pick<
     Session,
-    "isBusy" | "totalCostUsd" | "currentModel" | "sessionId" | "setModel" | "listModels" | "replace"
+    "isBusy" | "totalCostUsd" | "currentModel" | "sessionId" | "setModel" | "listModels" | "replace" | "currentPermissionMode" | "setPermissionMode"
   >;
   readUsage: () => Promise<UsageSnapshot>;
   print: (text: string) => void;
@@ -21,6 +27,7 @@ export interface CommandContext {
 const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MODEL_HINT = "바꾸려면: /model <ID>";
+const MODE_HINT = "바꾸려면: /mode <이름> · Shift+Tab";
 
 export const HELP_TEXT = [
   "명령",
@@ -30,17 +37,22 @@ export const HELP_TEXT = [
   "  /clear           새 대화 시작",
   "  /resume <ID>     이전 세션으로 이동 (종료할 때 세션 ID가 출력됩니다)",
   "  /help            이 도움말",
+  "  /mode            현재 권한 모드와 선택지",
+  "  /mode <이름>     권한 모드 바꾸기 (default, acceptEdits, plan, auto)",
   "  그 밖의 /…       플러그인 스킬 등으로 Claude에게 그대로 전달 (예: /suberpower:brainstorming)",
   "키",
   "  Enter            보내기 · 줄 끝에 \\ 를 붙이고 Enter: 여러 줄 입력",
   "  ↑/↓              이전 입력",
   "  Esc / Ctrl+C     실행 중인 턴 중단 · 권한 질문 중 Ctrl+C는 거부",
   "  Ctrl+C 두 번     종료 · Ctrl+D 종료",
+  "  Shift+Tab        권한 모드 순환 (default → acceptEdits → plan → auto)",
   "권한 질문",
   "  y 이번만 허용 · n 거부 · a 이 도구는 세션 동안 항상 허용",
+  "  계획 승인(plan 모드): y 승인 · e 승인+편집 자동 허용 · n 계속 계획",
   "실행 옵션 (터미널에서)",
   "  claud3 --model <ID>      모델 지정해 시작",
   "  claud3 --resume <ID>     세션 이어서 시작",
+  "  claud3 --permission-mode <이름>  권한 모드 지정해 시작",
   "  claud3 --help · --version",
   "개발판·안정판",
   "  claud3                  안정판 (승격한 커밋으로 고정)",
@@ -79,6 +91,16 @@ async function formatModelList(session: CommandContext["session"]): Promise<stri
     lines.push(`모델 목록을 가져오지 못했습니다: ${errorText(error)}`);
   }
   lines.push(MODEL_HINT);
+  return lines.join("\n");
+}
+
+function formatPermissionModeList(session: CommandContext["session"]): string {
+  const current = session.currentPermissionMode;
+  const lines = [`현재 모드: ${current ?? "알 수 없음"}`];
+  for (const mode of PERMISSION_MODES) {
+    lines.push(`${mode === current ? "*" : " "} ${mode.padEnd(12)} ${PERMISSION_MODE_DESCRIPTIONS[mode]}`);
+  }
+  lines.push(MODE_HINT);
   return lines.join("\n");
 }
 
@@ -143,6 +165,24 @@ export async function runCommand(
       }
       print(await runMutation(context, () => session.setModel(argument), `모델을 ${argument}(으)로 바꿨습니다`));
       return;
+    case "mode": {
+      if (argument === "") {
+        print(formatPermissionModeList(session));
+        return;
+      }
+      const mode = parsePermissionMode(argument);
+      if (mode === undefined) {
+        print(unknownPermissionModeMessage(argument));
+        return;
+      }
+      if (mode === session.currentPermissionMode) {
+        print(`이미 ${mode} 모드입니다`);
+        return;
+      }
+      // 실행 중에도 바꿀 수 있어 busy 검사를 하지 않는다. 결과는 permission_mode 이벤트로 화면에 표시된다.
+      await session.setPermissionMode(mode);
+      return;
+    }
     case "resume":
       if (argument === "") {
         print(`사용법: /resume <session-id>  (현재 세션: ${session.sessionId ?? "없음"})`);

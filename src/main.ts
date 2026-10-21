@@ -6,6 +6,8 @@ import { parseArgs as parseNodeArgs } from "node:util";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { MissingApiKeyError, readApiKey } from "./auth.js";
 import { buildBaseOptions } from "./config.js";
+import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionModes.js";
+import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
 import { createPlainUi } from "./ui/plain.js";
 import { addUsage, configDir, readUsage } from "./usageStore.js";
@@ -13,6 +15,7 @@ import { addUsage, configDir, readUsage } from "./usageStore.js";
 export interface CliArgs {
   resume?: string;
   model?: string;
+  permissionMode?: SelectablePermissionMode;
   help: boolean;
   version: boolean;
 }
@@ -24,13 +27,15 @@ Claude Agent SDK로 실행하는 터미널 코딩 CLI입니다. API 키는 macOS
 옵션:
   --resume <id>   이전 세션을 이어서 실행
   --model <name>  사용할 모델 (예: claude-sonnet-5-5)
+  --permission-mode <mode>  권한 모드 (default, acceptEdits, plan, auto)
   -v, --version   버전 출력
   -h, --help      이 도움말 출력
 
 조작:
   Esc / Ctrl+C    실행 중인 턴 중단 (권한 질문 중 Ctrl+C는 거부)
   Ctrl+C 두 번    종료
-  Ctrl+D          종료`;
+  Ctrl+D          종료
+  Shift+Tab       권한 모드 순환`;
 
 export function readVersion(): string {
   const packageJsonUrl = new URL("../package.json", import.meta.url);
@@ -44,17 +49,24 @@ export function parseArgs(argv: string[]): CliArgs {
     options: {
       resume: { type: "string" },
       model: { type: "string" },
+      "permission-mode": { type: "string" },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", short: "v", default: false },
     },
     strict: true,
     allowPositionals: false,
   });
+  const permissionModeValue = values["permission-mode"];
+  const permissionMode = permissionModeValue === undefined ? undefined : parsePermissionMode(permissionModeValue);
+  if (permissionModeValue !== undefined && permissionMode === undefined) {
+    throw new Error(unknownPermissionModeMessage(permissionModeValue));
+  }
   return {
     help: values.help ?? false,
     version: values.version ?? false,
     ...(values.resume === undefined ? {} : { resume: values.resume }),
     ...(values.model === undefined ? {} : { model: values.model }),
+    ...(permissionMode === undefined ? {} : { permissionMode }),
   };
 }
 
@@ -89,7 +101,12 @@ async function main(): Promise<number> {
     throw error;
   }
 
-  const baseOptions = buildBaseOptions({ cwd: process.cwd(), apiKey, model: args.model });
+  const baseOptions = buildBaseOptions({
+    cwd: process.cwd(),
+    apiKey,
+    model: args.model,
+    permissionMode: args.permissionMode,
+  });
   const ui = createPlainUi({
     input: process.stdin,
     output: process.stdout,

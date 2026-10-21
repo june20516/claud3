@@ -1,4 +1,4 @@
-import type { CanUseTool, ModelInfo, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, ModelInfo, Options, PermissionMode, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { Session, type QueryFn } from "../src/session.js";
 import type { PermissionPrompter, UiEvent } from "../src/types.js";
@@ -9,6 +9,7 @@ interface FakeCall {
   interrupt: Mock<() => Promise<void>>;
   setModel: Mock<(model?: string) => Promise<void>>;
   supportedModels: Mock<() => Promise<ModelInfo[]>>;
+  setPermissionMode: Mock<(mode: PermissionMode) => Promise<void>>;
 }
 
 const MODEL_LIST = [{ value: "opus", displayName: "Opus", description: "d" }] as ModelInfo[];
@@ -54,6 +55,7 @@ class FakeSdk {
       interrupt: vi.fn(async () => {}),
       setModel: vi.fn(async () => {}),
       supportedModels: vi.fn(async () => MODEL_LIST),
+      setPermissionMode: vi.fn(async () => {}),
     };
     this.calls.push(call);
     const sdk = this;
@@ -78,16 +80,17 @@ class FakeSdk {
       interrupt: call.interrupt,
       setModel: call.setModel,
       supportedModels: call.supportedModels,
+      setPermissionMode: call.setPermissionMode,
     });
   };
 }
 
-function createSession(options: { prompter?: PermissionPrompter; resume?: string } = {}) {
+function createSession(options: { prompter?: PermissionPrompter; resume?: string; permissionMode?: PermissionMode } = {}) {
   const sdk = new FakeSdk();
   const events: UiEvent[] = [];
   const session = new Session({
     queryFn: sdk.queryFn,
-    baseOptions: { cwd: "/work" },
+    baseOptions: { cwd: "/work", ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }) },
     prompter: options.prompter ?? (async () => "allow"),
     resume: options.resume,
   });
@@ -222,6 +225,79 @@ describe("Session", () => {
     session.start();
     await canUseTool(sdk.calls[0]!)("Bash", { command: "npm test\nmore" }, toolOptions);
     expect(prompter).toHaveBeenCalledWith({ toolName: "Bash", summary: "npm test", signal: toolOptions.signal });
+  });
+
+  describe("ExitPlanMode 계획 승인", () => {
+    const planInput = { plan: "1. 고친다", planFilePath: "/tmp/plan.md" };
+
+    it("prompter 요청에 plan.text·plan.filePath를 담는다", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "allow");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(prompter.mock.calls[0]![0].plan).toEqual({ text: "1. 고친다", filePath: "/tmp/plan.md" });
+    });
+
+    it("입력에 필드가 없으면 plan은 빈 객체", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "allow");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      await canUseTool(sdk.calls[0]!)("ExitPlanMode", {}, toolOptions);
+      expect(prompter.mock.calls[0]![0].plan).toEqual({});
+    });
+
+    it("다른 도구의 요청에는 plan이 없다", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "allow");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      await canUseTool(sdk.calls[0]!)("Bash", { command: "ls" }, toolOptions);
+      expect(prompter.mock.calls[0]![0]).not.toHaveProperty("plan");
+    });
+
+    it("allow → updatedInput만 포함한 allow", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "allow" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(result).toEqual({ behavior: "allow", updatedInput: planInput });
+    });
+
+    it("allowAcceptEdits → acceptEdits 모드 전환을 updatedPermissions로 요청", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "allowAcceptEdits" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(result).toEqual({
+        behavior: "allow",
+        updatedInput: planInput,
+        updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
+      });
+    });
+
+    it("deny → 계획을 다듬으라는 메시지", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "deny" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(result).toEqual({
+        behavior: "deny",
+        message: "사용자가 계획을 승인하지 않았습니다. 계획을 계속 다듬어 주세요",
+      });
+    });
+
+    it("always가 와도 ExitPlanMode는 항상 허용 목록에 넣지 않는다", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "always");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      const handler = canUseTool(sdk.calls[0]!);
+      await handler("ExitPlanMode", planInput, toolOptions);
+      await handler("ExitPlanMode", planInput, toolOptions);
+      expect(prompter).toHaveBeenCalledTimes(2);
+    });
+
+    it("다른 도구가 allowAcceptEdits를 받으면 일반 allow로 취급", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "allowAcceptEdits" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("Bash", { command: "ls" }, toolOptions);
+      expect(result).toEqual({ behavior: "allow", updatedInput: { command: "ls" } });
+    });
   });
 
   it("interrupt: query.interrupt가 reject해도 던지지 않고 error 이벤트로 알린다", async () => {
@@ -382,5 +458,224 @@ describe("Session", () => {
     await session.replace();
     await canUseTool(sdk.calls[1]!)("Edit", { file_path: "/b" }, toolOptions);
     expect(prompter).toHaveBeenCalledTimes(1);
+  });
+
+  describe("권한 모드", () => {
+    interface Deferred {
+      promise: Promise<void>;
+      resolve: () => void;
+      reject: (error: Error) => void;
+    }
+
+    function deferred(): Deferred {
+      let resolve!: () => void;
+      let reject!: (error: Error) => void;
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    function modeEvents(events: UiEvent[]): PermissionMode[] {
+      return eventsOfType(events, "permission_mode").map((event) => event.mode);
+    }
+
+    /** 외부에서 SDK 메시지를 흘려 넣을 수 있는 query를 가진 세션. */
+    function createInjectableSession(permissionMode?: PermissionMode) {
+      const events: UiEvent[] = [];
+      const queue: SDKMessage[] = [];
+      let wake: (() => void) | undefined;
+      const calls: FakeCall[] = [];
+      const session = new Session({
+        queryFn: ({ options }) => {
+          const call: FakeCall = {
+            options,
+            prompts: [],
+            interrupt: vi.fn(async () => {}),
+            setModel: vi.fn(async () => {}),
+            supportedModels: vi.fn(async () => MODEL_LIST),
+            setPermissionMode: vi.fn(async () => {}),
+          };
+          calls.push(call);
+          async function* run(): AsyncGenerator<SDKMessage, void> {
+            for (;;) {
+              const next = queue.shift();
+              if (next) {
+                yield next;
+              } else {
+                await new Promise<void>((resolve) => {
+                  wake = resolve;
+                });
+              }
+            }
+          }
+          return Object.assign(run(), {
+            interrupt: call.interrupt,
+            setModel: call.setModel,
+            supportedModels: call.supportedModels,
+            setPermissionMode: call.setPermissionMode,
+          });
+        },
+        baseOptions: { cwd: "/work", ...(permissionMode === undefined ? {} : { permissionMode }) },
+        prompter: async () => "allow",
+      });
+      session.onEvent((event) => events.push(event));
+      const push = (message: SDKMessage) => {
+        queue.push(message);
+        wake?.();
+      };
+      return { session, events, calls, push };
+    }
+
+    const initWith = (mode: PermissionMode) => sdkMessage({ type: "system", subtype: "init", model: "m", apiKeySource: "k", permissionMode: mode });
+    const statusWith = (mode: PermissionMode) => sdkMessage({ type: "system", subtype: "status", status: null, permissionMode: mode });
+
+    it("baseOptions의 시작값이 현재 값과 첫 query options에 반영된다", () => {
+      const { sdk, session } = createSession({ permissionMode: "plan" });
+      session.start();
+      expect(session.currentPermissionMode).toBe("plan");
+      expect(sdk.calls[0]?.options.permissionMode).toBe("plan");
+    });
+
+    it("옵션이 없으면 undefined이고 options에 키가 없다", () => {
+      const { sdk, session } = createSession();
+      session.start();
+      expect(session.currentPermissionMode).toBeUndefined();
+      expect("permissionMode" in (sdk.calls[0]?.options ?? {})).toBe(false);
+    });
+
+    it("init과 status의 permissionMode를 반영하고 바뀔 때만 이벤트를 낸다", async () => {
+      const { session, events, push } = createInjectableSession();
+      session.start();
+      push(initWith("default"));
+      await vi.waitFor(() => expect(session.currentPermissionMode).toBe("default"));
+      expect(modeEvents(events)).toEqual([]);
+      push(statusWith("acceptEdits"));
+      await vi.waitFor(() => expect(session.currentPermissionMode).toBe("acceptEdits"));
+      expect(modeEvents(events)).toEqual(["acceptEdits"]);
+      push(initWith("acceptEdits"));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(modeEvents(events)).toEqual(["acceptEdits"]);
+    });
+
+    it("setPermissionMode는 await 전에 값과 이벤트를 바꾸고 SDK를 호출한다 (busy여도)", async () => {
+      const { sdk, session, events } = createSession({ permissionMode: "default" });
+      sdk.hold();
+      session.start();
+      session.send("a");
+      const pending = session.setPermissionMode("plan");
+      expect(session.currentPermissionMode).toBe("plan");
+      expect(modeEvents(events)).toEqual(["plan"]);
+      expect(sdk.calls[0]?.setPermissionMode).toHaveBeenCalledWith("plan");
+      await pending;
+      sdk.release();
+    });
+
+    it("같은 모드면 SDK 호출과 이벤트가 없다", async () => {
+      const { sdk, session, events } = createSession({ permissionMode: "plan" });
+      session.start();
+      await session.setPermissionMode("plan");
+      expect(sdk.calls[0]?.setPermissionMode).not.toHaveBeenCalled();
+      expect(modeEvents(events)).toEqual([]);
+    });
+
+    it("SDK 실패 시 이전 값으로 되돌리고 permission_mode, error 순으로 알리며 resolve한다", async () => {
+      const { sdk, session, events } = createSession({ permissionMode: "default" });
+      session.start();
+      sdk.calls[0]?.setPermissionMode.mockRejectedValueOnce(new Error("boom"));
+      await expect(session.setPermissionMode("plan")).resolves.toBeUndefined();
+      expect(session.currentPermissionMode).toBe("default");
+      const relevant = events.filter((event) => event.type === "permission_mode" || event.type === "error");
+      expect(relevant).toEqual([
+        { type: "permission_mode", mode: "plan" },
+        { type: "permission_mode", mode: "default" },
+        { type: "error", message: "권한 모드를 바꾸지 못했습니다: boom" },
+      ]);
+    });
+
+    it("더 새로운 요청이 있으면 먼저 요청의 실패가 현재 값을 되돌리지 않는다", async () => {
+      const { sdk, session, events } = createSession({ permissionMode: "default" });
+      session.start();
+      const first = deferred();
+      sdk.calls[0]?.setPermissionMode.mockReturnValueOnce(first.promise);
+      const firstCall = session.setPermissionMode("acceptEdits");
+      const secondCall = session.setPermissionMode("plan");
+      expect(session.currentPermissionMode).toBe("plan");
+      first.reject(new Error("late"));
+      await firstCall;
+      await secondCall;
+      expect(session.currentPermissionMode).toBe("plan");
+      expect(modeEvents(events)).toEqual(["acceptEdits", "plan"]);
+      expect(eventsOfType(events, "error").map((event) => event.message)).toEqual(["권한 모드를 바꾸지 못했습니다: late"]);
+    });
+
+    it("같은 모드를 다시 요청한 뒤 먼저 요청이 늦게 실패해도 현재 값을 되돌리지 않는다", async () => {
+      const { sdk, session, events } = createSession({ permissionMode: "default" });
+      session.start();
+      const first = deferred();
+      sdk.calls[0]?.setPermissionMode.mockReturnValueOnce(first.promise);
+      const firstCall = session.setPermissionMode("acceptEdits");
+      await session.setPermissionMode("plan");
+      await session.setPermissionMode("acceptEdits");
+      first.reject(new Error("late"));
+      await firstCall;
+      expect(session.currentPermissionMode).toBe("acceptEdits");
+      expect(modeEvents(events)).toEqual(["acceptEdits", "plan", "acceptEdits"]);
+      expect(eventsOfType(events, "error")).toHaveLength(1);
+    });
+
+    it("변경 대기 중 수신한 init의 권한 모드는 무시한다", async () => {
+      const { session, events, calls, push } = createInjectableSession("default");
+      session.start();
+      const pending = deferred();
+      calls[0]?.setPermissionMode.mockReturnValueOnce(pending.promise);
+      const call = session.setPermissionMode("plan");
+      push(initWith("default"));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(session.currentPermissionMode).toBe("plan");
+      expect(modeEvents(events)).toEqual(["plan"]);
+      pending.resolve();
+      await call;
+    });
+
+    it("시작 전 호출은 값만 저장하고 start의 options에 반영된다", async () => {
+      const { sdk, session, events } = createSession();
+      await session.setPermissionMode("acceptEdits");
+      expect(session.currentPermissionMode).toBe("acceptEdits");
+      expect(modeEvents(events)).toEqual(["acceptEdits"]);
+      session.start();
+      expect(sdk.calls[0]?.options.permissionMode).toBe("acceptEdits");
+      expect(sdk.calls[0]?.setPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it("종료 후 호출은 reject한다", async () => {
+      const { session } = createSession();
+      session.start();
+      await session.close();
+      await expect(session.setPermissionMode("plan")).rejects.toThrow("세션이 이미 종료되었습니다");
+    });
+
+    it("replace()와 replace(id) 후 새 query options에 현재 값이 들어간다", async () => {
+      const { sdk, session } = createSession();
+      session.start();
+      await session.setPermissionMode("plan");
+      await session.replace();
+      await session.replace("other");
+      expect(sdk.calls[1]?.options.permissionMode).toBe("plan");
+      expect(sdk.calls[2]?.options.permissionMode).toBe("plan");
+    });
+
+    it("재연결 후 새 query options에 현재 값이 들어간다", async () => {
+      const { sdk, session, events } = createSession();
+      session.start();
+      session.send("a");
+      await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+      await session.setPermissionMode("acceptEdits");
+      sdk.failOnNextInput(new Error("끊김"));
+      session.send("b");
+      await vi.waitFor(() => expect(sdk.calls).toHaveLength(2));
+      expect(sdk.calls[1]?.options.permissionMode).toBe("acceptEdits");
+    });
   });
 });

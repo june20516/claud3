@@ -79,7 +79,7 @@ type UiEvent =
 1. **시작**: `auth`로 키 조회 → `config`로 옵션 구성 → `session`이 `query()`를 연다. 첫 시스템 메시지에서 `session_start` 이벤트를 내고, UI는 상단에 `API key · Agent SDK · <model>`을 표시한다.
 2. **입력**: UI가 한 줄을 받는다. `commands`가 claud3 명령(`/cost` 등)이면 처리한다. 그 밖의 입력(플러그인 스킬 `/suberpower:...` 포함)은 `session.send()`로 넘긴다.
 3. **응답**: SDK 메시지를 `events`가 `UiEvent`로 바꾸고, UI가 그린다. 텍스트는 `includePartialMessages`로 실시간 출력한다.
-4. **권한**: SDK가 `canUseTool`을 부르면 `session`이 `PermissionPrompter`에 묻는다. 응답은 y(이번만 허용), n(거부), a(이번 세션 동안 이 도구 항상 허용)다. 설정의 allow 규칙에 해당하면 SDK가 묻지 않는다.
+4. **권한**: SDK가 `canUseTool`을 부르면 `session`이 `PermissionPrompter`에 묻는다. 응답은 y(이번만 허용), n(거부), a(이번 세션 동안 이 도구 항상 허용)다. 설정의 allow 규칙에 해당하면 SDK가 묻지 않는다. 언제 묻는지는 권한 모드(6절 "권한 모드")가 정하고, plan 모드의 계획 승인(`ExitPlanMode`)은 y/e/n으로 따로 묻는다.
 5. **중단**: Esc 또는 실행 중 Ctrl+C는 `interrupt()`로 현재 턴만 멈춘다. 대기 중 Ctrl+C 두 번 또는 Ctrl+D는 종료한다.
 6. **종료**: 세션 ID와 누적 비용을 출력한다. `claud3 --resume <id>`로 이어서 쓴다.
 
@@ -91,6 +91,8 @@ type UiEvent =
 | API 오류(잔액 부족, 400 등) | 메시지를 그대로 표시하고 세션 유지. 잔액 부족이면 크레딧 만료·소진 가능성 안내 |
 | SDK 하위 프로세스 종료 | 오류 표시 후 마지막 세션 ID로 `resume` 재연결을 한 번 시도. 실패하면 세션 ID를 출력하고 종료 |
 | 도구 실행 오류 | 모델에 그대로 전달, UI에는 빨간 한 줄 표시 |
+| 잘못된 권한 모드 이름(`--permission-mode`, `/mode`) | `알 수 없는 권한 모드: <값> (default, acceptEdits, plan, auto)`. 실행 옵션이면 사용법과 함께 종료 코드 1, 세션 안이면 상태를 바꾸지 않음 |
+| 권한 모드 변경 실패(`setPermissionMode` reject) | 이전 모드로 되돌리고 `권한 모드를 바꾸지 못했습니다: <message>` 표시 |
 
 ## 6. 단계
 
@@ -124,6 +126,40 @@ type UiEvent =
   - `/help`: 명령, 키 조작, 모델 바꾸기, 세션 이어 가기, 개발판·안정판(`npm run dev`, 승격 요청) 안내
   - 저장소 루트 `README.md`: 설치(키체인 등록, 승격), 실행 옵션, 세션 안 명령, 모델 ID, 비용·크레딧 확인 방법, 알려진 한계
 
+### 권한 모드 (추가 2026-10-21, 2단계 이후)
+
+SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermissions`와 `dontAsk`는 노출하지 않는다.
+
+| 모드 | 설명(화면 문구) |
+|---|---|
+| `default` | 위험한 도구는 매번 묻기 |
+| `acceptEdits` | 파일 편집은 묻지 않고 허용 |
+| `plan` | 계획만 세우고 도구 실행 안 함 |
+| `auto` | 분류기가 판단, 애매하면 묻기 |
+
+- 확인 결과: API 키 인증에서도 `auto`가 적용된다(init `permissionMode=auto`). 옵션을 생략하면 이 환경에서는 `default`로 시작한다. 실행 중 `setPermissionMode`가 동작하고, 다음 턴의 `system:status`·`system:init`에 바뀐 값이 실린다 (`docs/suberpowers/notes/probe-results.md` "권한 모드 확인").
+- **고르는 방법**
+  - 실행 옵션 `--permission-mode <mode>`. 주지 않으면 SDK에 넘기지 않는다(설정의 `permissions.defaultMode`, 없으면 `default`).
+  - 세션 안 `/mode`: 현재 모드(`*` 표시)와 네 선택지·설명, 마지막 줄 `바꾸려면: /mode <이름> · Shift+Tab`. `/mode <이름>`으로 바로 바꾼다.
+  - Shift+Tab: `default → acceptEdits → plan → auto → default` 순서로 순환한다. 현재 모드가 목록 밖(설정의 `dontAsk` 등)이면 `default`로 간다. 권한 질문 중에는 무시하고, 턴 실행 중과 여러 줄 입력 중에는 허용한다.
+  - 모드 변경은 턴 실행 중에도 된다(`/model`과 다름).
+- **구성 요소**
+  - `permissionModes`(순수 모듈): 모드 목록(배열 순서 = 순환 순서), `parsePermissionMode`, `nextPermissionMode`, 설명 문구.
+  - `session`: `currentPermissionMode`(SDK `PermissionMode` 타입, 시작값은 `baseOptions.permissionMode`)와 `setPermissionMode(mode)`. 새 query(`/clear`, `/resume`, 재연결)를 열 때 현재 모드를 `options.permissionMode`로 넘긴다.
+  - `UiEvent`에 `{ type: "permission_mode"; mode: PermissionMode }` 추가.
+  - `commands`에 `/mode`, `main`에 `--permission-mode`, `ui/plain`에 Shift+Tab·모드 변경 줄·상태 줄 표시.
+- **데이터 흐름**
+  - `session`은 `system:init`·`system:status`의 `permissionMode`로 현재 모드를 갱신한다. 처음 알게 된 값은 이벤트를 내지 않고, 알던 값이 바뀌면 `permission_mode`를 낸다. 같은 값이 다시 오면 무시한다.
+  - `setPermissionMode`는 현재 모드를 먼저 바꾸고 이벤트를 낸 뒤 SDK 호출을 기다린다(Shift+Tab 연타 시 바뀐 값에서 이어서 순환). 실패하면 이전 값으로 되돌리고 `permission_mode`와 `error`를 낸다. 같은 모드면 아무것도 하지 않는다. query를 열기 전이면 값만 저장했다가 연결할 때 쓴다. 종료된 세션이면 `세션이 이미 종료되었습니다`를 던진다.
+  - 화면은 `permission_mode` 이벤트에 `권한 모드: <모드> — <설명>` 한 줄을 출력한다(2단계 렌더 체인으로 순서 보장). 상태 줄은 `<모델> · <모드> · 세션 $… · 크레딧 잔여 추정 $…`이고, 모드를 아직 모르면 모드를 생략한다.
+- **plan 모드의 계획 승인**
+  - `ExitPlanMode` 권한 요청이면 `PermissionRequest.plan`(`{ text?: string; filePath?: string }`)을 채운다. 화면은 계획 본문을 마크다운 렌더러로 자르지 않고 보여 주고, 본문이 없으면 계획 파일 경로를, 둘 다 없으면 기존 요약을 보여 준다.
+  - 질문: `계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획`. 계획 질문은 y/e/n만, 일반 도구 질문은 y/n/a만 받는다.
+  - `PermissionDecision`에 `"allowAcceptEdits"`를 추가한다. y → 허용, e → 허용 + `updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }]`, n → 거부(`사용자가 계획을 승인하지 않았습니다. 계획을 계속 다듬어 주세요`). 계획 승인은 "항상 허용" 목록에 넣지 않는다.
+  - 승인 뒤 모드는 SDK가 정하는 값을 따르고, status 메시지로 바뀐 값이 오면 위 흐름대로 표시한다.
+  - 확인 결과(`docs/suberpowers/notes/probe-results.md` "계획 승인 확인"): 입력의 계획 본문 필드는 `plan`, 경로 필드는 `planFilePath`. y(allow) 승인 뒤 모드는 `default`, e(allow + `updatedPermissions` setMode acceptEdits) 승인 뒤 모드는 `acceptEdits`이므로 updatedPermissions 방식을 채택한다. 승인 직후 `setPermissionMode("acceptEdits")`를 호출하는 대안은 필요 없었음.
+- **안내**: `/help`와 README에 `--permission-mode`, `/mode`, Shift+Tab, 계획 승인 y/e/n을 추가한다. `CLAUDE.md` 구조 표에 `permissionModes`를 추가한다.
+
 ### 3단계: Ink TUI
 
 - 같은 `session`과 `UiEvent`를 쓰는 Ink 화면: 입력창, 스크롤되는 대화, 도구 실행 표시, 권한 요청 창, 하단 상태 줄
@@ -153,7 +189,9 @@ type UiEvent =
   - `config`: 임시 디렉터리에 만든 플러그인 설치 목록 → 플러그인 경로
   - `auth`: 명령 실행기를 주입해 성공·키 없음 경우
   - `commands`: 입력별 분기
-  - `session`: SDK `query`를 가짜로 주입해 입력 전달, 중단, 비용 누적, 권한 위임
+  - `session`: SDK `query`를 가짜로 주입해 입력 전달, 중단, 비용 누적, 권한 위임, 권한 모드 반영·변경·실패 되돌림, 계획 승인(y/e/n)
+  - `permissionModes`: 파싱, 순환 순서, 목록 밖 현재값
+  - `ui/plain`: PassThrough(`terminal: true`)로 Shift+Tab(`\x1b[Z`) 입력, 모드 변경 줄, 상태 줄, 계획 질문
 - 실제 API 호출은 자동 테스트에서 하지 않는다. 각 단계 끝에 수동으로 한 번 확인한다.
 
 ## 9. 미확인 사항 (확인 결과, 2026-10-21)
@@ -162,4 +200,6 @@ type UiEvent =
 - 사용량이 Agent SDK로 분류되는지 — **확인됨.** 프로모션 크레딧 US$100.00 → US$99.99 (0단계, 사용자 Console 확인)
 - `settingSources`로 불러온 훅과 플러그인 스킬이 동작하는지 — **확인됨.** SessionStart 훅 실행(init 앞의 hook_started/hook_response), 플러그인 11개 로드, 자기 개발 확인에서 `suberpower:test-driven-development` 스킬 호출 (0·1단계)
 - 플러그인 설치 목록 파일의 위치와 형식 — **불필요해짐.** `settingSources`만으로 `enabledPlugins`가 로드되어 `plugins` 옵션을 쓰지 않는다 (`docs/suberpowers/notes/probe-results.md` 3번)
+- API 키 인증에서 `permissionMode: 'auto'`가 적용되는지 — **확인됨.** init `permissionMode=auto`, 실행 중 `setPermissionMode` 동작. 분류기가 실제 도구 호출을 판단하는 동작은 미확인 (권한 모드 probe)
+- `ExitPlanMode` 권한 요청의 입력 필드와 승인 뒤 모드 — **확인됨.** 계획 본문 `plan`, 경로 `planFilePath`. y 승인 뒤 `default`, e 승인(`updatedPermissions` setMode acceptEdits) 뒤 `acceptEdits` (`docs/suberpowers/notes/probe-results.md` "계획 승인 확인")
 - 추가 발견: `system:init`은 매 턴 다시 온다. `total_cost_usd`는 query 단위 누적값이다. `echo` 같은 읽기 전용 Bash는 권한을 묻지 않는다(Claude Code 규칙과 같음)
