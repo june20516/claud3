@@ -6,6 +6,7 @@ import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { HELP_TEXT } from "../src/commands.js";
 import type { CommandContext } from "../src/commands.js";
+import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import type { Session } from "../src/session.js";
 import type { UiEvent } from "../src/types.js";
 import type { UsageSnapshot } from "../src/usageStore.js";
@@ -15,6 +16,7 @@ import {
   formatEvent,
   formatStatusLine,
   parseDecision,
+  parsePlanDecision,
 } from "../src/ui/plain.js";
 import type { PlainRunOptions } from "../src/ui/plain.js";
 
@@ -31,6 +33,21 @@ describe("parseDecision", () => {
   it("그 밖의 답은 undefined", () => {
     expect(parseDecision("")).toBeUndefined();
     expect(parseDecision("maybe")).toBeUndefined();
+  });
+});
+
+describe("parsePlanDecision", () => {
+  it("y/yes는 allow, e는 allowAcceptEdits, n/no는 deny (대소문자·앞뒤 공백 무시)", () => {
+    expect(parsePlanDecision("y")).toBe("allow");
+    expect(parsePlanDecision("yes")).toBe("allow");
+    expect(parsePlanDecision("E")).toBe("allowAcceptEdits");
+    expect(parsePlanDecision(" n ")).toBe("deny");
+    expect(parsePlanDecision("no")).toBe("deny");
+  });
+
+  it("a와 빈 답을 포함한 그 밖의 답은 undefined", () => {
+    expect(parsePlanDecision("a")).toBeUndefined();
+    expect(parsePlanDecision("")).toBeUndefined();
   });
 });
 
@@ -199,6 +216,16 @@ describe("formatStatusLine", () => {
     expect(text).toContain("m · 세션 $0.0123 · 크레딧 잔여 추정 $99.50");
   });
 
+  it("권한 모드가 있으면 모델 다음에 표시한다", () => {
+    const text = formatStatusLine({ model: "m", permissionMode: "plan", sessionCostUsd: 0.0123, remainingCreditUsd: 99.5 });
+    expect(stripVTControlCharacters(text)).toBe("m · plan · 세션 $0.0123 · 크레딧 잔여 추정 $99.50");
+  });
+
+  it("권한 모드가 없으면 그 자리를 생략한다", () => {
+    const text = formatStatusLine({ model: "m", sessionCostUsd: 0.0123, remainingCreditUsd: 99.5 });
+    expect(stripVTControlCharacters(text)).toBe("m · 세션 $0.0123 · 크레딧 잔여 추정 $99.50");
+  });
+
   it("모델이 없으면 '기본 모델'", () => {
     expect(formatStatusLine({ sessionCostUsd: 0, remainingCreditUsd: 0 })).toContain("기본 모델 · 세션 $0.0000");
   });
@@ -305,6 +332,8 @@ class FakeSession {
   isBusy = false;
   totalCostUsd = 0;
   currentModel: string | undefined = "claude-test";
+  currentPermissionMode: PermissionMode | undefined = undefined;
+  readonly setPermissionMode = vi.fn(async (_mode: PermissionMode) => undefined);
   sessionId: string | undefined = "s1";
   readonly interrupt = vi.fn(async () => undefined);
   readonly close = vi.fn(async () => {
@@ -360,7 +389,7 @@ function createRunUi(overrides: RunUiOverrides = {}, terminal = false) {
   const ui = createPlainUi({ input, output, terminal });
   const running = ui.run(session.asSession(), { commandContext, recordUsage });
   const plain = (): string => stripVTControlCharacters(state.written);
-  return { input, state, plain, session, printed, recordUsage, running };
+  return { input, state, plain, session, printed, recordUsage, running, ui };
 }
 
 describe("createPlainUi run", () => {
@@ -481,5 +510,127 @@ describe("createPlainUi run", () => {
     await session.close();
 
     await expect(running).resolves.toBeUndefined();
+  });
+});
+
+describe("createPlainUi 권한 모드", () => {
+  it("Shift+Tab은 다음 권한 모드로 바꾸고 입력 줄에 문자를 남기지 않는다", async () => {
+    const { input, session } = createRunUi({}, true);
+    session.currentPermissionMode = "acceptEdits";
+
+    input.write("\x1b[Z");
+    await vi.waitFor(() => expect(session.setPermissionMode).toHaveBeenCalledTimes(1));
+    expect(session.setPermissionMode).toHaveBeenCalledWith("plan");
+    input.write("abc\r");
+
+    await vi.waitFor(() => expect(session.sent).toEqual(["abc"]));
+  });
+
+  it("권한 질문이 열린 동안 Shift+Tab은 모드를 바꾸지 않는다", async () => {
+    const { input, plain, session, ui } = createRunUi({}, true);
+
+    const decision = ui.prompter({ toolName: "Bash", summary: "ls" });
+    await vi.waitFor(() => expect(plain()).toContain("허용할까요?"));
+    input.write("\x1b[Z");
+    input.write("y\r");
+
+    await expect(decision).resolves.toBe("allow");
+    expect(session.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  it("모드 변경이 reject되면 오류 한 줄을 출력하고 계속한다", async () => {
+    const { input, plain, session } = createRunUi({}, true);
+    session.setPermissionMode.mockRejectedValueOnce(new Error("세션이 종료되었습니다"));
+
+    input.write("\x1b[Z");
+    await vi.waitFor(() => expect(plain()).toContain("오류: 세션이 종료되었습니다"));
+    input.write("abc\r");
+
+    await vi.waitFor(() => expect(session.sent).toEqual(["abc"]));
+  });
+
+  it("turn_result 뒤 상태 줄에 현재 권한 모드를 표시한다", async () => {
+    const { plain, session } = createRunUi();
+    session.currentPermissionMode = "plan";
+
+    session.emit({ type: "turn_result", costUsd: 0, totalCostUsd: 0, isError: false });
+
+    await vi.waitFor(() => expect(plain()).toContain("claude-test · plan · 세션 $0.0000"));
+  });
+});
+
+const PLAN_QUESTION = "계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획 › ";
+
+describe("createPlainUi 계획 질문", () => {
+  it("계획 본문을 질문보다 먼저 보이고, 잘못된 답은 다시 묻고 e는 allowAcceptEdits", async () => {
+    const { input, state, ui } = createTestUi();
+    const plain = (): string => stripVTControlCharacters(state.written);
+
+    const decision = ui.prompter({ toolName: "ExitPlanMode", summary: "…", plan: { text: "# 계획\n- 하나" } });
+    await vi.waitFor(() => expect(plain()).toContain(PLAN_QUESTION));
+    const text = plain();
+    expect(text).toContain("계획");
+    expect(text).toContain("• 하나");
+    expect(text.indexOf("• 하나")).toBeLessThan(text.indexOf(PLAN_QUESTION));
+    expect(text).not.toContain("허용할까요?");
+
+    input.write("a\n");
+    await vi.waitFor(() => expect(plain().split("계획을 승인할까요?").length - 1).toBe(2));
+    input.write("e\n");
+
+    await expect(decision).resolves.toBe("allowAcceptEdits");
+    expect(plain().split("• 하나").length - 1).toBe(1);
+  });
+
+  it("본문 없이 경로만 있으면 '계획 파일: <경로>'를 보인다", async () => {
+    const { input, state, ui } = createTestUi();
+    const plain = (): string => stripVTControlCharacters(state.written);
+
+    const decision = ui.prompter({ toolName: "ExitPlanMode", summary: "요약", plan: { filePath: "/p/plan.md" } });
+    await vi.waitFor(() => expect(plain()).toContain(PLAN_QUESTION));
+    expect(plain()).toContain("계획 파일: /p/plan.md");
+    expect(plain()).not.toContain("ExitPlanMode(요약)");
+    input.write("y\n");
+
+    await expect(decision).resolves.toBe("allow");
+  });
+
+  it("본문과 경로가 모두 없으면 기존 요약 줄만 보인다", async () => {
+    const { input, state, ui } = createTestUi();
+    const plain = (): string => stripVTControlCharacters(state.written);
+
+    const decision = ui.prompter({ toolName: "ExitPlanMode", summary: "요약", plan: {} });
+    await vi.waitFor(() => expect(plain()).toContain(PLAN_QUESTION));
+    expect(plain()).toContain("ExitPlanMode(요약)");
+    expect(plain()).not.toContain("계획 파일:");
+    input.write("n\n");
+
+    await expect(decision).resolves.toBe("deny");
+  });
+
+  it("닫히지 않은 코드 블록과 긴 계획도 모두 보이고 질문 줄에 색이 새지 않는다", async () => {
+    vi.stubEnv("FORCE_COLOR", "1");
+    try {
+      const { input, state, ui } = createTestUi();
+      const planLines = Array.from({ length: 300 }, (_, index) => `줄 ${index + 1}`);
+      const text = ["```", "code", ...planLines].join("\n");
+
+      const decision = ui.prompter({ toolName: "ExitPlanMode", summary: "…", plan: { text } });
+      await vi.waitFor(() => expect(state.written).toContain(PLAN_QUESTION));
+      const written = state.written;
+      expect(written).toContain("\u001b[36m");
+      const questionLine = written.slice(written.lastIndexOf("\n") + 1);
+      expect(questionLine).toContain(PLAN_QUESTION);
+      expect(questionLine).not.toContain("\u001b[36m");
+      const shown = stripVTControlCharacters(written);
+      for (const line of planLines) {
+        expect(shown).toContain(`${line}\n`);
+      }
+      input.write("y\n");
+
+      await expect(decision).resolves.toBe("allow");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
