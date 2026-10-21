@@ -31,6 +31,24 @@ describe("formatToolDiff", () => {
     expect(lines).not.toContain("      b3");
   });
 
+  it.each([1, 2, 3])("변경 앞의 문맥이 %i줄이면 직전 2줄까지 남긴다", (count) => {
+    const context = ["x1", "x2", "x3"].slice(3 - count);
+    const lines = plainLines("Edit", {
+      old_string: [...context, "old"].join("\n"),
+      new_string: [...context, "new"].join("\n"),
+    });
+    expect(lines).toEqual([...context.slice(-2).map((line) => `      ${line}`), "    - old", "    + new"]);
+  });
+
+  it("앞뒤 변경 사이의 짧은 문맥은 중복 없이 모두 남긴다", () => {
+    const lines = plainLines("Edit", {
+      old_string: "old1\nm1\nm2\nm3\nold2",
+      new_string: "new1\nm1\nm2\nm3\nnew2",
+    });
+    expect(lines?.filter((line) => line.endsWith("m1"))).toHaveLength(1);
+    expect(lines?.filter((line) => line.endsWith("m3"))).toHaveLength(1);
+  });
+
   it("replace_all이면 첫 줄에 표시한다", () => {
     const lines = plainLines("Edit", { old_string: "x", new_string: "y", replace_all: true });
     expect(lines?.[0]).toBe("    (모든 위치 바꿈)");

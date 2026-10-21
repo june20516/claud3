@@ -26,11 +26,14 @@ function contextLine(line: string): string {
   return styleText("dim", `  ${line}`);
 }
 
-/** 바뀌지 않은 구간에서 인접한 변경과 맞닿은 앞뒤 CONTEXT_LINES줄만 남긴다. */
+/** 바뀌지 않은 구간에서 인접한 변경 쪽 CONTEXT_LINES줄만 남긴다. */
 function trimContext(lines: string[], hasChangeBefore: boolean, hasChangeAfter: boolean): string[] {
-  const head = hasChangeBefore ? lines.slice(0, CONTEXT_LINES) : [];
-  const tail = hasChangeAfter ? lines.slice(Math.max(CONTEXT_LINES, lines.length - CONTEXT_LINES)) : [];
-  return lines.length <= CONTEXT_LINES * 2 && hasChangeBefore && hasChangeAfter ? lines : [...head, ...tail];
+  if (hasChangeBefore && hasChangeAfter && lines.length <= CONTEXT_LINES * 2) {
+    return lines;
+  }
+  const afterPreviousChange = hasChangeBefore ? lines.slice(0, CONTEXT_LINES) : [];
+  const beforeNextChange = hasChangeAfter ? lines.slice(-CONTEXT_LINES) : [];
+  return [...afterPreviousChange, ...beforeNextChange];
 }
 
 function formatEdit(oldString: string, newString: string, replaceAll: boolean): string[] {
