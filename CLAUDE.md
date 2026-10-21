@@ -15,8 +15,12 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/auth.ts` | macOS 키체인 `anthropic-api`에서 API 키 조회 |
 | `src/config.ts` | 기본 SDK 옵션 (settingSources, claude_code preset, 스트리밍, env의 API 키) |
 | `src/asyncQueue.ts` | SDK로 보내는 입력 대기열 |
-| `src/session.ts` | `query()` 수명, 한 번에 한 턴씩 입력, 중단, 재연결, 권한 위임. 화면을 모른다 |
-| `src/ui/plain.ts` | readline 화면과 권한 질문. 로직 없이 이벤트를 그리기만 한다 |
+| `src/session.ts` | `query()` 수명, 한 번에 한 턴씩 입력, 중단, 재연결, 모델 변경·목록, 세션 교체, 권한 위임. 화면을 모른다 |
+| `src/usageStore.ts` | `~/.config/claud3/usage.json`(`CLAUD3_CONFIG_DIR`로 변경)의 누적 비용·시작 잔액 읽기/쓰기 |
+| `src/commands.ts` | 슬래시 명령(`/cost`·`/model`·`/clear`·`/resume`·`/help`) 파싱·실행과 `HELP_TEXT` |
+| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 |
+| `src/markdown.ts` | 스트리밍 텍스트를 줄 단위로 마크다운 스타일링 |
+| `src/ui/plain.ts` | readline 화면, 상태 줄, 여러 줄 입력, 입력 기록, 권한 질문. 로직 없이 이벤트를 그리기만 한다 |
 | `src/main.ts` | 인자 처리와 조립 |
 | `scripts/promote.sh`, `scripts/rollback.sh` | 안정판 승격·되돌리기 |
 

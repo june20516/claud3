@@ -77,14 +77,14 @@ describe("createEventMapper", () => {
     expect(events).toEqual([{ type: "text_delta", text: "hi" }]);
   });
 
-  it("assistant의 tool_use → tool_start(name, summary)", () => {
+  it("assistant의 tool_use → tool_start(name, summary, input)", () => {
     const events = mapAll([
       sdkMessage({
         type: "assistant",
         message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "ls -la" } }] },
       }),
     ]);
-    expect(events).toEqual([{ type: "tool_start", toolUseId: "t1", name: "Bash", summary: "ls -la" }]);
+    expect(events).toEqual([{ type: "tool_start", toolUseId: "t1", name: "Bash", summary: "ls -la", input: { command: "ls -la" } }]);
   });
 
   it("user의 tool_result → tool_end(isError, 내용 첫 줄 80자)", () => {

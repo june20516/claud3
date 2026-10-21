@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs as parseNodeArgs } from "node:util";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -7,6 +8,7 @@ import { MissingApiKeyError, readApiKey } from "./auth.js";
 import { buildBaseOptions } from "./config.js";
 import { Session } from "./session.js";
 import { createPlainUi } from "./ui/plain.js";
+import { addUsage, configDir, readUsage } from "./usageStore.js";
 
 export interface CliArgs {
   resume?: string;
@@ -88,9 +90,20 @@ async function main(): Promise<number> {
   }
 
   const baseOptions = buildBaseOptions({ cwd: process.cwd(), apiKey, model: args.model });
-  const ui = createPlainUi({ input: process.stdin, output: process.stdout });
+  const ui = createPlainUi({
+    input: process.stdin,
+    output: process.stdout,
+    historyFile: join(configDir(), "history"),
+  });
   const session = new Session({ queryFn: query, baseOptions, prompter: ui.prompter, resume: args.resume });
-  await ui.run(session);
+  await ui.run(session, {
+    commandContext: {
+      session,
+      readUsage: () => readUsage(),
+      print: (text) => process.stdout.write(`${text}\n`),
+    },
+    recordUsage: (costUsd) => addUsage(costUsd),
+  });
   return 0;
 }
 
