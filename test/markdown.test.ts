@@ -63,6 +63,22 @@ describe("renderMarkdownLine", () => {
     expect(rendered).toContain(CYAN);
   });
 
+  it("굵게 안의 링크 뒤에도 굵게가 이어진다", () => {
+    const rendered = renderMarkdownLine("**보기 [문서](https://e.com) 끝**", { inCodeBlock: false });
+    expect(stripVTControlCharacters(rendered)).toBe("보기 문서 (https://e.com) 끝");
+    expect(rendered).toContain(`\u001b[22m${BOLD} 끝`);
+  });
+
+  it("제목 안에도 굵게·인라인 코드를 적용한다", () => {
+    expect(plain("## `a.ts` **굵게** 설명")).toBe("a.ts 굵게 설명");
+    expect(renderMarkdownLine("## `a.ts` 설명", { inCodeBlock: false })).toContain(CYAN);
+  });
+
+  it("인용 안에도 굵게·인라인 코드를 적용한다", () => {
+    expect(plain("> **주의** `rm` 금지")).toBe("│ 주의 rm 금지");
+    expect(renderMarkdownLine("> `rm` 금지", { inCodeBlock: false })).toContain(CYAN);
+  });
+
   it("링크를 텍스트와 흐린 URL로 바꾼다", () => {
     expect(plain("[문서](https://example.com)")).toBe("문서 (https://example.com)");
   });

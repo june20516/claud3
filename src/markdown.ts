@@ -29,8 +29,10 @@ const LINK_PATTERN = /\[([^\]]+)\]\(([^)\s]+)\)/g;
 const CODE_PLACEHOLDER_PATTERN = /\0(\d+)\0/g;
 
 /**
- * 인라인 코드를 자리표시자로 보호한 채 굵게·링크를 줄 전체에 적용한 뒤 코드를 되돌린다.
+ * 인라인 코드를 자리표시자로 보호한 채 링크·굵게를 줄 전체에 적용한 뒤 코드를 되돌린다.
  * 그래야 `**`가 코드 앞뒤로 갈라져 있어도(`**\`a.ts\` 파일**`) 짝을 찾고, 코드 안의 `**`는 건드리지 않는다.
+ * 바깥 스타일을 나중에 씌워야 styleText가 안쪽 닫는 코드 뒤에 바깥 스타일을 다시 열어 주므로,
+ * 흐린 URL(링크)을 굵게보다 먼저 적용한다.
  */
 function renderInline(text: string): string {
   const codeSpans: string[] = [];
@@ -40,8 +42,8 @@ function renderInline(text: string): string {
   });
 
   return protectedText
-    .replace(BOLD_PATTERN, (_match, content: string) => paint("bold", content))
     .replace(LINK_PATTERN, (_match, label: string, url: string) => `${label}${paint("dim", ` (${url})`)}`)
+    .replace(BOLD_PATTERN, (_match, content: string) => paint("bold", content))
     .replace(CODE_PLACEHOLDER_PATTERN, (_match, index: string) => paint("cyan", codeSpans[Number(index)] ?? ""));
 }
 
@@ -57,12 +59,12 @@ export function renderMarkdownLine(line: string, state: MarkdownLineState): stri
   const heading = HEADING_PATTERN.exec(line);
   if (heading) {
     const [, marks = "", title = ""] = heading;
-    return paint(marks.length === 1 ? ["bold", "underline"] : "bold", title);
+    return paint(marks.length === 1 ? ["bold", "underline"] : "bold", renderInline(title));
   }
 
   const quote = QUOTE_PATTERN.exec(line);
   if (quote) {
-    return paint("dim", `│ ${quote[1] ?? ""}`);
+    return paint("dim", `│ ${renderInline(quote[1] ?? "")}`);
   }
 
   const listItem = LIST_PATTERN.exec(line);
