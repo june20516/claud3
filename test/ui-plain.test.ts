@@ -549,6 +549,60 @@ describe("createPlainUi 권한 모드", () => {
     await vi.waitFor(() => expect(session.sent).toEqual(["abc"]));
   });
 
+  it("대기 중 Shift+Tab 뒤에 프롬프트와 입력 중이던 글자를 다시 그린다", async () => {
+    const { input, plain, session } = createRunUi({}, true);
+    session.setPermissionMode.mockImplementation(async (mode: PermissionMode) => {
+      session.currentPermissionMode = mode;
+      session.emit({ type: "permission_mode", mode });
+    });
+
+    input.write("ab");
+    input.write("\x1b[Z");
+
+    await vi.waitFor(() => expect(plain()).toContain("권한 모드:"));
+    await vi.waitFor(() => expect(plain().slice(plain().indexOf("권한 모드:"))).toContain("> ab"));
+  });
+
+  it("여러 줄 입력 중 Shift+Tab 뒤에는 '… ' 프롬프트를 다시 그린다", async () => {
+    const { input, plain, session } = createRunUi({}, true);
+    session.setPermissionMode.mockImplementation(async (mode: PermissionMode) => {
+      session.emit({ type: "permission_mode", mode });
+    });
+
+    input.write("a\\\r");
+    await vi.waitFor(() => expect(plain()).toContain("… "));
+    input.write("cd");
+    input.write("\x1b[Z");
+
+    await vi.waitFor(() => expect(plain().slice(plain().indexOf("권한 모드:"))).toContain("… cd"));
+  });
+
+  it("턴 실행 중 Shift+Tab은 프롬프트를 다시 그리지 않는다", async () => {
+    const { input, plain, session } = createRunUi({}, true);
+    session.isBusy = true;
+    session.setPermissionMode.mockImplementation(async (mode: PermissionMode) => {
+      session.emit({ type: "permission_mode", mode });
+    });
+
+    input.write("\x1b[Z");
+
+    await vi.waitFor(() => expect(plain()).toContain("권한 모드:"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(plain().slice(plain().indexOf("권한 모드:"))).not.toContain("> ");
+  });
+
+  it("대기 중 모드 변경이 reject되면 오류 줄 뒤에 프롬프트와 입력을 다시 그린다", async () => {
+    const { input, plain, session } = createRunUi({}, true);
+    session.setPermissionMode.mockRejectedValueOnce(new Error("세션이 종료되었습니다"));
+
+    input.write("ab");
+    input.write("\x1b[Z");
+
+    await vi.waitFor(() => expect(plain()).toContain("오류: 세션이 종료되었습니다"));
+    await vi.waitFor(() => expect(plain().slice(plain().indexOf("오류: 세션이"))).toContain("> ab"));
+    expect(plain()).toContain("\n오류: 세션이 종료되었습니다\n");
+  });
+
   it("turn_result 뒤 상태 줄에 현재 권한 모드를 표시한다", async () => {
     const { plain, session } = createRunUi();
     session.currentPermissionMode = "plan";
@@ -590,6 +644,22 @@ describe("createPlainUi 계획 질문", () => {
     await vi.waitFor(() => expect(plain()).toContain(PLAN_QUESTION));
     expect(plain()).toContain("계획 파일: /p/plan.md");
     expect(plain()).not.toContain("ExitPlanMode(요약)");
+    input.write("y\n");
+
+    await expect(decision).resolves.toBe("allow");
+  });
+
+  it("공백만 있는 본문은 없는 것으로 보고 경로를 보인다", async () => {
+    const { input, state, ui } = createTestUi();
+    const plain = (): string => stripVTControlCharacters(state.written);
+
+    const decision = ui.prompter({
+      toolName: "ExitPlanMode",
+      summary: "요약",
+      plan: { text: "  \n ", filePath: "/p/plan.md" },
+    });
+    await vi.waitFor(() => expect(plain()).toContain(PLAN_QUESTION));
+    expect(plain()).toContain("계획 파일: /p/plan.md");
     input.write("y\n");
 
     await expect(decision).resolves.toBe("allow");

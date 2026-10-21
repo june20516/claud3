@@ -157,7 +157,7 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
   - 질문: `계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획`. 계획 질문은 y/e/n만, 일반 도구 질문은 y/n/a만 받는다.
   - `PermissionDecision`에 `"allowAcceptEdits"`를 추가한다. y → 허용, e → 허용 + `updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }]`, n → 거부(`사용자가 계획을 승인하지 않았습니다. 계획을 계속 다듬어 주세요`). 계획 승인은 "항상 허용" 목록에 넣지 않는다.
   - 승인 뒤 모드는 SDK가 정하는 값을 따르고, status 메시지로 바뀐 값이 오면 위 흐름대로 표시한다.
-  - 미확인(구현 첫 단계에서 실제 API로 확인): `canUseTool`에 오는 `ExitPlanMode` 입력의 계획 본문·경로 필드 이름, 승인 뒤 모드, e 승인 후 실제로 `acceptEdits`가 되는지. SDK가 계획 종료 처리로 모드를 덮어쓰면 승인 직후 `setPermissionMode("acceptEdits")`를 호출하는 방식으로 바꾼다.
+  - 확인 결과(`docs/suberpowers/notes/probe-results.md` "계획 승인 확인"): 입력의 계획 본문 필드는 `plan`, 경로 필드는 `planFilePath`. y(allow) 승인 뒤 모드는 `default`, e(allow + `updatedPermissions` setMode acceptEdits) 승인 뒤 모드는 `acceptEdits`이므로 updatedPermissions 방식을 채택한다. 승인 직후 `setPermissionMode("acceptEdits")`를 호출하는 대안은 필요 없었음.
 - **안내**: `/help`와 README에 `--permission-mode`, `/mode`, Shift+Tab, 계획 승인 y/e/n을 추가한다. `CLAUDE.md` 구조 표에 `permissionModes`를 추가한다.
 
 ### 3단계: Ink TUI
@@ -201,5 +201,5 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
 - `settingSources`로 불러온 훅과 플러그인 스킬이 동작하는지 — **확인됨.** SessionStart 훅 실행(init 앞의 hook_started/hook_response), 플러그인 11개 로드, 자기 개발 확인에서 `suberpower:test-driven-development` 스킬 호출 (0·1단계)
 - 플러그인 설치 목록 파일의 위치와 형식 — **불필요해짐.** `settingSources`만으로 `enabledPlugins`가 로드되어 `plugins` 옵션을 쓰지 않는다 (`docs/suberpowers/notes/probe-results.md` 3번)
 - API 키 인증에서 `permissionMode: 'auto'`가 적용되는지 — **확인됨.** init `permissionMode=auto`, 실행 중 `setPermissionMode` 동작. 분류기가 실제 도구 호출을 판단하는 동작은 미확인 (권한 모드 probe)
-- `ExitPlanMode` 권한 요청의 입력 필드와 승인 뒤 모드 — **미확인.** 권한 모드 구현의 첫 단계에서 확인
+- `ExitPlanMode` 권한 요청의 입력 필드와 승인 뒤 모드 — **확인됨.** 계획 본문 `plan`, 경로 `planFilePath`. y 승인 뒤 `default`, e 승인(`updatedPermissions` setMode acceptEdits) 뒤 `acceptEdits` (`docs/suberpowers/notes/probe-results.md` "계획 승인 확인")
 - 추가 발견: `system:init`은 매 턴 다시 온다. `total_cost_usd`는 query 단위 누적값이다. `echo` 같은 읽기 전용 Bash는 권한을 묻지 않는다(Claude Code 규칙과 같음)

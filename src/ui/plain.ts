@@ -117,7 +117,7 @@ export function parsePlanDecision(answer: string): PermissionDecision | undefine
 
 /** 계획 질문 앞에 보일 내용. 본문, 계획 파일 경로, 도구 요약 순으로 있는 것 하나만 보인다. */
 function formatPlan(request: PermissionRequest, plan: { text?: string; filePath?: string }): string {
-  if (plan.text !== undefined && plan.text !== "") {
+  if (plan.text !== undefined && plan.text.trim() !== "") {
     const renderer = createMarkdownRenderer();
     return `\n${renderer.push(`${plan.text}\n`)}${renderer.flush()}`;
   }
@@ -321,6 +321,13 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
         }
       };
 
+      // 입력 중이던 줄을 보존한 채 프롬프트를 다시 그린다.
+      const redrawPromptIfIdle = (): void => {
+        if (!session.isBusy) {
+          rl.prompt(true);
+        }
+      };
+
       const printStatusLine = async (costUsd: number): Promise<void> => {
         try {
           const snapshot = await recordUsage(costUsd);
@@ -348,6 +355,9 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
         }
         if (event.type === "turn_result" || event.type === "error") {
           promptIfIdle();
+        }
+        if (event.type === "permission_mode") {
+          redrawPromptIfIdle();
         }
         if (event.type === "session_closed") {
           rl.close();
@@ -425,7 +435,10 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
           if (key?.name === "tab" && key.shift === true && !activeQuestion) {
             session
               .setPermissionMode(nextPermissionMode(session.currentPermissionMode))
-              .catch((error: unknown) => write(errorLine(errorText(error))));
+              .catch((error: unknown) => {
+                write(formatEvent({ type: "error", message: errorText(error) }));
+                redrawPromptIfIdle();
+              });
           }
         });
       }
