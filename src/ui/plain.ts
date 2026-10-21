@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { styleText } from "node:util";
@@ -15,6 +15,7 @@ import type { UsageSnapshot } from "../usageStore.js";
 const PROMPT = "> ";
 const CONTINUATION_PROMPT = "… ";
 const HISTORY_SIZE = 500;
+const HISTORY_FILE_MODE = 0o600;
 const EXIT_CONFIRM_WINDOW_MS = 2000;
 const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
 
@@ -179,7 +180,8 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
     historyWrites = historyWrites
       .then(async () => {
         await mkdir(dirname(file), { recursive: true });
-        await writeFile(file, content, "utf8");
+        await writeFile(file, content, { encoding: "utf8", mode: HISTORY_FILE_MODE });
+        await chmod(file, HISTORY_FILE_MODE);
       })
       .catch((error: unknown) => {
         if (!hasWarnedHistory) {
@@ -306,7 +308,9 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
       // 사용량 기록을 기다리는 동안 다음 이벤트가 먼저 그려지지 않도록 차례로 처리한다.
       let rendering: Promise<void> = Promise.resolve();
       session.onEvent((event) => {
-        rendering = rendering.then(() => renderEvent(event));
+        rendering = rendering
+          .then(() => renderEvent(event))
+          .catch((error: unknown) => write(errorLine(errorText(error))));
       });
 
       const submit = (text: string): void => {

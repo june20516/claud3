@@ -42,6 +42,14 @@ describe("usageStore", () => {
     expect(snapshot.spentUsd).toBe(10.25);
   });
 
+  it("비용이 유한수가 아니거나 음수면 기록하지 않는다", async () => {
+    await addUsage(0.5, dir);
+    for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect((await addUsage(invalid, dir)).spentUsd).toBe(0.5);
+    }
+    expect((await readUsage(dir)).spentUsd).toBe(0.5);
+  });
+
   it("디렉터리가 없으면 만든다", async () => {
     const nested = join(dir, "a", "b");
     await addUsage(1, nested);

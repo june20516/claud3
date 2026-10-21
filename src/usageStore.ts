@@ -47,6 +47,9 @@ export async function readUsage(dir: string = configDir()): Promise<UsageSnapsho
 
 export async function addUsage(costUsd: number, dir: string = configDir()): Promise<UsageSnapshot> {
   const current = await readUsage(dir);
+  if (!Number.isFinite(costUsd) || costUsd < 0) {
+    return current;
+  }
   const next: UsageSnapshot = { ...current, spentUsd: current.spentUsd + costUsd };
 
   await mkdir(dir, { recursive: true });

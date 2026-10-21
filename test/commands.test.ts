@@ -14,6 +14,8 @@ const MODELS: ModelInfo[] = [
   { value: "claude-b", displayName: "B", description: "둘째" },
 ];
 
+const VALID_ID = "123e4567-e89b-12d3-a456-426614174000";
+
 function createContext(overrides: Partial<CommandContext["session"]> = {}) {
   const printed: string[] = [];
   const session = {
@@ -72,6 +74,12 @@ describe("runCommand", () => {
     const { context, session, printed } = createContext();
     await runCommand(command("clear"), context);
     expect(session.replace).toHaveBeenCalledWith();
+    expect(printed).toEqual(["새 대화를 시작했습니다 (이전 세션: sess-1)"]);
+  });
+
+  it("/clear는 이전 세션이 없으면 이전 세션 표기를 붙이지 않는다", async () => {
+    const { context, printed } = createContext({ sessionId: undefined });
+    await runCommand(command("clear"), context);
     expect(printed).toEqual(["새 대화를 시작했습니다"]);
   });
 
@@ -119,11 +127,24 @@ describe("runCommand", () => {
     expect(printed[0]).toContain("현재 모델: claude-a");
   });
 
-  it("/resume id는 세션으로 이동한다", async () => {
+  it("/resume id는 세션으로 이동하고 이전 세션을 표기한다", async () => {
+    const { context, session, printed } = createContext();
+    await runCommand(command("resume", VALID_ID), context);
+    expect(session.replace).toHaveBeenCalledWith(VALID_ID);
+    expect(printed).toEqual([`세션 ${VALID_ID}(으)로 이동했습니다 (이전 세션: sess-1)`]);
+  });
+
+  it("/resume은 이전 세션이 없으면 이전 세션 표기를 붙이지 않는다", async () => {
+    const { context, printed } = createContext({ sessionId: undefined });
+    await runCommand(command("resume", VALID_ID), context);
+    expect(printed).toEqual([`세션 ${VALID_ID}(으)로 이동했습니다`]);
+  });
+
+  it("/resume 인자가 세션 ID 형식이 아니면 replace를 부르지 않는다", async () => {
     const { context, session, printed } = createContext();
     await runCommand(command("resume", "abc"), context);
-    expect(session.replace).toHaveBeenCalledWith("abc");
-    expect(printed).toEqual(["세션 abc(으)로 이동했습니다"]);
+    expect(session.replace).not.toHaveBeenCalled();
+    expect(printed).toEqual(["세션 ID 형식이 아닙니다: abc"]);
   });
 
   it("인자 없는 /resume은 사용법을 출력한다", async () => {
@@ -143,7 +164,7 @@ describe("runCommand", () => {
     const { context, session, printed } = createContext({ isBusy: true });
     await runCommand(command("model", "x"), context);
     await runCommand(command("clear"), context);
-    await runCommand(command("resume", "abc"), context);
+    await runCommand(command("resume", VALID_ID), context);
     expect(session.setModel).not.toHaveBeenCalled();
     expect(session.replace).not.toHaveBeenCalled();
     expect(printed).toEqual(Array(3).fill("턴이 끝난 뒤 다시 입력해 주세요"));
@@ -157,6 +178,11 @@ describe("runCommand", () => {
     });
     await runCommand(command("model", "x"), context);
     expect(printed).toEqual(["세션이 시작되지 않았습니다"]);
+  });
+
+  it("/help에 개발판·안정판 안내가 실행 옵션 뒤에 있다", () => {
+    expect(HELP_TEXT).toContain("개발판·안정판");
+    expect(HELP_TEXT.indexOf("실행 옵션")).toBeLessThan(HELP_TEXT.indexOf("개발판·안정판"));
   });
 
   it("/help는 HELP_TEXT를 그대로 출력한다", async () => {

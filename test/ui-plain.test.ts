@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -244,6 +244,22 @@ describe("createPlainUi 입력 기록", () => {
     await vi.waitFor(() => expect(readLines(historyFile)).toEqual(["real", "old"]));
   });
 
+  it.skipIf(process.platform === "win32")("기록 파일 권한을 0600으로 저장한다", async () => {
+    const dir = createTempDir();
+    const newFile = join(dir, "new-history");
+    const existingFile = join(dir, "existing-history");
+    writeFileSync(existingFile, "old\n");
+    chmodSync(existingFile, 0o644);
+
+    for (const historyFile of [newFile, existingFile]) {
+      const input = new PassThrough();
+      createPlainUi({ input, output: new PassThrough(), terminal: true, historyFile });
+      input.write("hello\r");
+      await vi.waitFor(() => expect(readLines(historyFile)[0]).toBe("hello"));
+      await vi.waitFor(() => expect(statSync(historyFile).mode & 0o777).toBe(0o600));
+    }
+  });
+
   it("기록 파일 디렉터리가 없으면 만든다", async () => {
     const historyFile = join(createTempDir(), "nested", "dir", "history");
     const input = new PassThrough();
@@ -422,6 +438,22 @@ describe("createPlainUi run", () => {
 
     await vi.waitFor(() => expect(plain()).toContain("디스크 가득"));
     expect(plain()).not.toContain("크레딧 잔여 추정");
+  });
+
+  it("이벤트 렌더링이 던져도 오류 한 줄을 출력하고 다음 이벤트를 계속 처리한다", async () => {
+    const { plain, session } = createRunUi();
+    const broken = {
+      type: "error",
+      get message(): string {
+        throw new Error("렌더 실패");
+      },
+    } as UiEvent;
+
+    session.emit(broken);
+    session.emit({ type: "error", message: "다음 오류" });
+
+    await vi.waitFor(() => expect(plain()).toContain("다음 오류"));
+    expect(plain()).toContain("오류: 렌더 실패");
   });
 
   it("여러 줄 입력 중 Ctrl+C는 모은 줄을 버리고 종료 확인을 하지 않는다", async () => {

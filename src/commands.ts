@@ -19,6 +19,7 @@ export interface CommandContext {
 }
 
 const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
+const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MODEL_HINT = "바꾸려면: /model <ID>";
 
 export const HELP_TEXT = [
@@ -41,6 +42,10 @@ export const HELP_TEXT = [
   "  claud3 --model <ID>      모델 지정해 시작",
   "  claud3 --resume <ID>     세션 이어서 시작",
   "  claud3 --help · --version",
+  "개발판·안정판",
+  "  claud3                  안정판 (승격한 커밋으로 고정)",
+  "  npm run dev -- [옵션]   저장소에서 개발판 실행",
+  '  승격은 Claude에게 "안정판으로 승격해 줘"처럼 요청 (npm run promote)',
 ].join("\n");
 
 function isCommandName(name: string): name is CommandName {
@@ -102,6 +107,10 @@ async function runMutation(
   }
 }
 
+function withPreviousSession(message: string, previousSessionId: string | undefined): string {
+  return previousSessionId === undefined ? message : `${message} (이전 세션: ${previousSessionId})`;
+}
+
 export async function runCommand(
   command: Extract<ParsedInput, { kind: "command" }>,
   context: CommandContext,
@@ -116,9 +125,17 @@ export async function runCommand(
     case "help":
       print(HELP_TEXT);
       return;
-    case "clear":
-      print(await runMutation(context, () => session.replace(), "새 대화를 시작했습니다"));
+    case "clear": {
+      const previousSessionId = session.sessionId;
+      print(
+        await runMutation(
+          context,
+          () => session.replace(),
+          withPreviousSession("새 대화를 시작했습니다", previousSessionId),
+        ),
+      );
       return;
+    }
     case "model":
       if (argument === "") {
         print(await formatModelList(session));
@@ -131,7 +148,20 @@ export async function runCommand(
         print(`사용법: /resume <session-id>  (현재 세션: ${session.sessionId ?? "없음"})`);
         return;
       }
-      print(await runMutation(context, () => session.replace(argument), `세션 ${argument}(으)로 이동했습니다`));
+      if (!SESSION_ID_PATTERN.test(argument)) {
+        print(`세션 ID 형식이 아닙니다: ${argument}`);
+        return;
+      }
+      {
+        const previousSessionId = session.sessionId;
+        print(
+          await runMutation(
+            context,
+            () => session.replace(argument),
+            withPreviousSession(`세션 ${argument}(으)로 이동했습니다`, previousSessionId),
+          ),
+        );
+      }
       return;
   }
 }
