@@ -2,9 +2,9 @@ import { styleText } from "node:util";
 
 type TextFormat = Parameters<typeof styleText>[0];
 
-// 출력 대상 스트림 검사를 끄고 항상 ANSI 코드를 붙인다(화면 계층이 색 사용 여부를 정한다).
+// 기본 styleText 동작을 따른다(파이프·NO_COLOR 환경에서는 색을 끈다).
 function paint(format: TextFormat, text: string): string {
-  return styleText(format, text, { validateStream: false });
+  return styleText(format, text);
 }
 
 export interface MarkdownStreamRenderer {

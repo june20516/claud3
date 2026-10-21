@@ -1,5 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMarkdownRenderer, renderMarkdownLine } from "../src/markdown.js";
 
 const plain = (line: string, inCodeBlock = false): string =>
@@ -7,6 +7,16 @@ const plain = (line: string, inCodeBlock = false): string =>
 
 const BOLD = "\u001b[1m";
 const CYAN = "\u001b[36m";
+
+// 비TTY 테스트 환경에서도 ANSI 코드가 나오도록 색을 강제한다.
+beforeEach(() => {
+  vi.stubEnv("FORCE_COLOR", "1");
+  vi.stubEnv("NO_COLOR", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("renderMarkdownLine", () => {
   it("제목에서 # 기호를 빼고 굵게 표시한다", () => {
