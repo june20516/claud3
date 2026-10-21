@@ -224,6 +224,26 @@ describe("createPlainUi 입력 기록", () => {
     await vi.waitFor(() => expect(readLines(historyFile)).toEqual(["new", "old2", "old1"]));
   });
 
+  it("권한 질문의 답은 기록에 남기지 않는다", async () => {
+    const historyFile = join(createTempDir(), "history");
+    writeFileSync(historyFile, "old\n");
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let written = "";
+    output.on("data", (chunk: Buffer) => {
+      written += chunk.toString();
+    });
+    const ui = createPlainUi({ input, output, terminal: true, historyFile });
+
+    const decision = ui.prompter({ toolName: "Bash", summary: "ls" });
+    await vi.waitFor(() => expect(written).toContain("허용할까요?"));
+    input.write("y\r");
+    await expect(decision).resolves.toBe("allow");
+    input.write("real\r");
+
+    await vi.waitFor(() => expect(readLines(historyFile)).toEqual(["real", "old"]));
+  });
+
   it("기록 파일 디렉터리가 없으면 만든다", async () => {
     const historyFile = join(createTempDir(), "nested", "dir", "history");
     const input = new PassThrough();

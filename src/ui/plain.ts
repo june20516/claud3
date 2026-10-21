@@ -152,13 +152,14 @@ function loadHistory(historyFile: string | undefined): string[] {
 
 /** readline 기반 화면. 이벤트를 그리고, 입력과 권한 응답만 Session에 돌려준다. */
 export function createPlainUi({ input, output, terminal = isTty(input), historyFile }: PlainUiIo): PlainUi {
+  const initialHistory = loadHistory(historyFile);
   const rl = createInterface({
     input,
     output,
     terminal,
     prompt: PROMPT,
     historySize: HISTORY_SIZE,
-    history: loadHistory(historyFile),
+    history: [...initialHistory],
   });
   let activeQuestion: AbortController | undefined;
   let activeSession: Session | undefined;
@@ -170,25 +171,37 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
     }
   };
 
-  if (historyFile !== undefined) {
-    // 저장이 겹치지 않도록 차례로 쓰고, 실패는 처음 한 번만 알린다.
-    let historyWrites: Promise<void> = Promise.resolve();
-    let hasWarnedHistory = false;
-    rl.on("history", (history: string[]) => {
-      const content = `${history.slice(0, HISTORY_SIZE).join("\n")}\n`;
-      historyWrites = historyWrites
-        .then(async () => {
-          await mkdir(dirname(historyFile), { recursive: true });
-          await writeFile(historyFile, content, "utf8");
-        })
-        .catch((error: unknown) => {
-          if (!hasWarnedHistory) {
-            hasWarnedHistory = true;
-            write(`\n${styleText("dim", `입력 기록을 저장하지 못했습니다: ${errorText(error)}`)}\n`);
-          }
-        });
-    });
-  }
+  // 저장이 겹치지 않도록 차례로 쓰고, 실패는 처음 한 번만 알린다.
+  let historyWrites: Promise<void> = Promise.resolve();
+  let hasWarnedHistory = false;
+  const saveHistory = (file: string, history: string[]): void => {
+    const content = `${history.slice(0, HISTORY_SIZE).join("\n")}\n`;
+    historyWrites = historyWrites
+      .then(async () => {
+        await mkdir(dirname(file), { recursive: true });
+        await writeFile(file, content, "utf8");
+      })
+      .catch((error: unknown) => {
+        if (!hasWarnedHistory) {
+          hasWarnedHistory = true;
+          write(`\n${styleText("dim", `입력 기록을 저장하지 못했습니다: ${errorText(error)}`)}\n`);
+        }
+      });
+  };
+
+  // readline은 권한 질문의 답도 기록에 넣고, 답을 넘기기 전에 history 이벤트를 낸다.
+  // 이벤트의 배열은 readline 내부 기록 자체이므로, 질문 중이면 직전 기록으로 되돌리고 저장하지 않는다.
+  let acceptedHistory = initialHistory;
+  rl.on("history", (history: string[]) => {
+    if (activeQuestion) {
+      history.splice(0, history.length, ...acceptedHistory);
+      return;
+    }
+    acceptedHistory = [...history];
+    if (historyFile !== undefined) {
+      saveHistory(historyFile, history);
+    }
+  });
 
   type AskResult = { kind: "answer"; text: string } | { kind: "cancelled"; by: "user" | "sdk" };
 
