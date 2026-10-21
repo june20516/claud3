@@ -1,7 +1,7 @@
 import type { CanUseTool, ModelInfo, Options, PermissionMode, PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "./asyncQueue.js";
 import { createEventMapper, summarizeToolInput } from "./events.js";
-import type { PermissionPrompter, UiEvent } from "./types.js";
+import type { PermissionPrompter, PermissionRequest, UiEvent } from "./types.js";
 
 /** Session이 쓰는 query 기능만 추린 타입. SDK의 Query도 이 타입을 만족한다. */
 export type SessionQuery = AsyncIterable<SDKMessage> & {
@@ -21,11 +21,24 @@ export interface SessionDeps {
 }
 
 const DENIED_MESSAGE = "사용자가 거부했습니다";
+const PLAN_DENIED_MESSAGE = "사용자가 계획을 승인하지 않았습니다. 계획을 계속 다듬어 주세요";
+const EXIT_PLAN_MODE_TOOL = "ExitPlanMode";
 const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
 const PENDING_CANCELLED_MESSAGE = "재연결로 대기 중 입력이 취소되었습니다";
 
 function toUserMessage(text: string): SDKUserMessage {
   return { type: "user", message: { role: "user", content: text }, parent_tool_use_id: null };
+}
+
+function extractPlan(input: Record<string, unknown>): NonNullable<PermissionRequest["plan"]> {
+  const plan: NonNullable<PermissionRequest["plan"]> = {};
+  if (typeof input.plan === "string") {
+    plan.text = input.plan;
+  }
+  if (typeof input.planFilePath === "string") {
+    plan.filePath = input.planFilePath;
+  }
+  return plan;
 }
 
 function errorText(error: unknown): string {
@@ -282,9 +295,23 @@ export class Session {
     if (this.alwaysAllowedTools.has(toolName)) {
       return { behavior: "allow", updatedInput: input };
     }
-    const decision = await this.deps.prompter({ toolName, summary: summarizeToolInput(toolName, input), signal });
+    const isPlanApproval = toolName === EXIT_PLAN_MODE_TOOL;
+    const request: PermissionRequest = { toolName, summary: summarizeToolInput(toolName, input), signal };
+    if (isPlanApproval) {
+      request.plan = extractPlan(input);
+    }
+    const decision = await this.deps.prompter(request);
     if (decision === "deny") {
-      return { behavior: "deny", message: DENIED_MESSAGE };
+      return { behavior: "deny", message: isPlanApproval ? PLAN_DENIED_MESSAGE : DENIED_MESSAGE };
+    }
+    if (isPlanApproval) {
+      return decision === "allowAcceptEdits"
+        ? {
+            behavior: "allow",
+            updatedInput: input,
+            updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
+          }
+        : { behavior: "allow", updatedInput: input };
     }
     if (decision === "always") {
       this.alwaysAllowedTools.add(toolName);

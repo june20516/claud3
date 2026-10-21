@@ -227,6 +227,79 @@ describe("Session", () => {
     expect(prompter).toHaveBeenCalledWith({ toolName: "Bash", summary: "npm test", signal: toolOptions.signal });
   });
 
+  describe("ExitPlanMode 계획 승인", () => {
+    const planInput = { plan: "1. 고친다", planFilePath: "/tmp/plan.md" };
+
+    it("prompter 요청에 plan.text·plan.filePath를 담는다", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "allow");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(prompter.mock.calls[0]![0].plan).toEqual({ text: "1. 고친다", filePath: "/tmp/plan.md" });
+    });
+
+    it("입력에 필드가 없으면 plan은 빈 객체", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "allow");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      await canUseTool(sdk.calls[0]!)("ExitPlanMode", {}, toolOptions);
+      expect(prompter.mock.calls[0]![0].plan).toEqual({});
+    });
+
+    it("다른 도구의 요청에는 plan이 없다", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "allow");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      await canUseTool(sdk.calls[0]!)("Bash", { command: "ls" }, toolOptions);
+      expect(prompter.mock.calls[0]![0]).not.toHaveProperty("plan");
+    });
+
+    it("allow → updatedInput만 포함한 allow", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "allow" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(result).toEqual({ behavior: "allow", updatedInput: planInput });
+    });
+
+    it("allowAcceptEdits → acceptEdits 모드 전환을 updatedPermissions로 요청", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "allowAcceptEdits" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(result).toEqual({
+        behavior: "allow",
+        updatedInput: planInput,
+        updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
+      });
+    });
+
+    it("deny → 계획을 다듬으라는 메시지", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "deny" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("ExitPlanMode", planInput, toolOptions);
+      expect(result).toEqual({
+        behavior: "deny",
+        message: "사용자가 계획을 승인하지 않았습니다. 계획을 계속 다듬어 주세요",
+      });
+    });
+
+    it("always가 와도 ExitPlanMode는 항상 허용 목록에 넣지 않는다", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "always");
+      const { sdk, session } = createSession({ prompter });
+      session.start();
+      const handler = canUseTool(sdk.calls[0]!);
+      await handler("ExitPlanMode", planInput, toolOptions);
+      await handler("ExitPlanMode", planInput, toolOptions);
+      expect(prompter).toHaveBeenCalledTimes(2);
+    });
+
+    it("다른 도구가 allowAcceptEdits를 받으면 일반 allow로 취급", async () => {
+      const { sdk, session } = createSession({ prompter: async () => "allowAcceptEdits" });
+      session.start();
+      const result = await canUseTool(sdk.calls[0]!)("Bash", { command: "ls" }, toolOptions);
+      expect(result).toEqual({ behavior: "allow", updatedInput: { command: "ls" } });
+    });
+  });
+
   it("interrupt: query.interrupt가 reject해도 던지지 않고 error 이벤트로 알린다", async () => {
     const { sdk, session, events } = createSession();
     sdk.hold();
