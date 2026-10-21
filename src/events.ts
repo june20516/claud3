@@ -93,7 +93,7 @@ export function createEventMapper(initialTotalUsd = 0): (message: SDKMessage) =>
             return [];
           }
           const input = (block.input ?? {}) as Record<string, unknown>;
-          return [{ type: "tool_start", toolUseId: block.id, name: block.name, summary: summarizeToolInput(block.name, input) }];
+          return [{ type: "tool_start", toolUseId: block.id, name: block.name, summary: summarizeToolInput(block.name, input), input }];
         });
 
       case "user":

@@ -29,7 +29,7 @@ describe("formatEvent", () => {
   });
 
   it("tool_start는 '⏺ Bash(npm test)' 포함", () => {
-    expect(formatEvent({ type: "tool_start", toolUseId: "t1", name: "Bash", summary: "npm test" })).toContain("⏺ Bash(npm test)");
+    expect(formatEvent({ type: "tool_start", toolUseId: "t1", name: "Bash", summary: "npm test", input: {} })).toContain("⏺ Bash(npm test)");
   });
 
   it("성공한 tool_end는 빈 문자열", () => {
