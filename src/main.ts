@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { parseArgs as parseNodeArgs } from "node:util";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -12,6 +12,7 @@ export interface CliArgs {
   resume?: string;
   model?: string;
   help: boolean;
+  version: boolean;
 }
 
 const USAGE = `사용법: claud3 [옵션]
@@ -21,12 +22,19 @@ Claude Agent SDK로 실행하는 터미널 코딩 CLI입니다. API 키는 macOS
 옵션:
   --resume <id>   이전 세션을 이어서 실행
   --model <name>  사용할 모델 (예: claude-sonnet-5-5)
+  -v, --version   버전 출력
   -h, --help      이 도움말 출력
 
 조작:
   Esc / Ctrl+C    실행 중인 턴 중단 (권한 질문 중 Ctrl+C는 거부)
   Ctrl+C 두 번    종료
   Ctrl+D          종료`;
+
+export function readVersion(): string {
+  const packageJsonUrl = new URL("../package.json", import.meta.url);
+  const { version } = JSON.parse(readFileSync(packageJsonUrl, "utf8")) as { version: string };
+  return version;
+}
 
 export function parseArgs(argv: string[]): CliArgs {
   const { values } = parseNodeArgs({
@@ -35,12 +43,14 @@ export function parseArgs(argv: string[]): CliArgs {
       resume: { type: "string" },
       model: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
+      version: { type: "boolean", short: "v", default: false },
     },
     strict: true,
     allowPositionals: false,
   });
   return {
     help: values.help ?? false,
+    version: values.version ?? false,
     ...(values.resume === undefined ? {} : { resume: values.resume }),
     ...(values.model === undefined ? {} : { model: values.model }),
   };
@@ -58,6 +68,11 @@ async function main(): Promise<number> {
 
   if (args.help) {
     console.log(USAGE);
+    return 0;
+  }
+
+  if (args.version) {
+    console.log(readVersion());
     return 0;
   }
 
