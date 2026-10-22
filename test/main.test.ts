@@ -1,11 +1,29 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseArgs, readVersion } from "../src/main.js";
+import { parseArgs, readVersion, shouldUsePlainUi } from "../src/main.js";
 
 const packageVersion = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
+
+describe("shouldUsePlainUi", () => {
+  it("--plain이 없고 입출력이 모두 터미널이면 Ink 화면", () => {
+    expect(shouldUsePlainUi({ plain: false, stdinIsTty: true, stdoutIsTty: true })).toBe(false);
+  });
+
+  it("--plain이면 readline 화면", () => {
+    expect(shouldUsePlainUi({ plain: true, stdinIsTty: true, stdoutIsTty: true })).toBe(true);
+  });
+
+  it("입력이 터미널이 아니면 readline 화면", () => {
+    expect(shouldUsePlainUi({ plain: false, stdinIsTty: false, stdoutIsTty: true })).toBe(true);
+  });
+
+  it("출력이 터미널이 아니면 readline 화면", () => {
+    expect(shouldUsePlainUi({ plain: false, stdinIsTty: true, stdoutIsTty: false })).toBe(true);
+  });
+});
 
 describe("parseArgs", () => {
   it("--resume와 --model 값을 읽는다", () => {

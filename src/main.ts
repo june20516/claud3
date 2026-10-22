@@ -47,6 +47,11 @@ export function readVersion(): string {
   return version;
 }
 
+/** Ink 화면은 입출력이 모두 터미널일 때만 쓴다. 나머지는 readline 화면으로 동작한다. */
+export function shouldUsePlainUi(params: { plain: boolean; stdinIsTty: boolean; stdoutIsTty: boolean }): boolean {
+  return params.plain || !params.stdinIsTty || !params.stdoutIsTty;
+}
+
 export function parseArgs(argv: string[]): CliArgs {
   const { values } = parseNodeArgs({
     args: argv,
@@ -115,7 +120,11 @@ async function main(): Promise<number> {
   });
   const historyFile = join(configDir(), "history");
   const ui: ChatUi =
-    args.plain || !process.stdin.isTTY
+    shouldUsePlainUi({
+      plain: args.plain,
+      stdinIsTty: process.stdin.isTTY === true,
+      stdoutIsTty: process.stdout.isTTY === true,
+    })
       ? createPlainUi({ input: process.stdin, output: process.stdout, historyFile })
       : createInkUi({ stdin: process.stdin, stdout: process.stdout, historyFile });
   const session = new Session({ queryFn: query, baseOptions, prompter: ui.prompter, resume: args.resume });
