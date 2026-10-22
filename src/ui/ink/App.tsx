@@ -163,7 +163,7 @@ export interface AppProps {
   saveHistory?: (history: string[]) => void;
 }
 
-/** 대화, 대화상자, 입력창, 상태 줄을 배치하고 화면 전체 키(Esc·Ctrl+C·Ctrl+D·Shift+Tab)를 처리한다. */
+/** 대화, 대화상자, 입력창, 상태 줄을 배치하고 화면 전체 키(Esc·Ctrl+C·Shift+Tab)를 처리한다. Ctrl+D는 InputBox가 받는다. */
 export function App({ store, session, commandContext, initialHistory, saveHistory }: AppProps) {
   const { transcript, dialog, remainingCreditUsd: remaining } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const lastIdleInterruptAt = useRef(0);
@@ -217,8 +217,6 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
     }
     if (key.escape && session.isBusy) {
       interruptTurn();
-    } else if (key.ctrl && input === "d") {
-      void session.close();
     } else if (key.tab && key.shift) {
       session
         .setPermissionMode(nextPermissionMode(session.currentPermissionMode))
@@ -245,16 +243,15 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
           onSubmit={submit}
           onInterrupt={handleInterrupt}
           onHistoryChange={saveHistory}
+          onExit={() => void session.close()}
         />
       </Box>
-      {remaining === undefined ? null : (
-        <StatusBar
-          model={session.currentModel ?? transcript.model}
-          permissionMode={session.currentPermissionMode ?? transcript.permissionMode}
-          sessionCostUsd={session.totalCostUsd}
-          remainingCreditUsd={remaining}
-        />
-      )}
+      <StatusBar
+        model={session.currentModel ?? transcript.model}
+        permissionMode={session.currentPermissionMode ?? transcript.permissionMode}
+        sessionCostUsd={session.totalCostUsd}
+        remainingCreditUsd={remaining}
+      />
     </Box>
   );
 }

@@ -211,6 +211,11 @@ describe("MultilineBuffer", () => {
 });
 
 describe("formatStatusLine", () => {
+  it("잔액을 모르면 잔액 부분만 뺀다", () => {
+    const text = stripVTControlCharacters(formatStatusLine({ model: "m", sessionCostUsd: 0.0123 }));
+    expect(text).toBe("m · 세션 $0.0123");
+  });
+
   it("모델 · 세션 비용 · 크레딧 잔여 추정", () => {
     const text = formatStatusLine({ model: "m", sessionCostUsd: 0.0123, remainingCreditUsd: 99.5 });
     expect(text).toContain("m · 세션 $0.0123 · 크레딧 잔여 추정 $99.50");

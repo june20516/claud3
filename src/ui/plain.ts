@@ -54,13 +54,14 @@ export function formatStatusLine(params: {
   model?: string;
   permissionMode?: PermissionMode;
   sessionCostUsd: number;
-  remainingCreditUsd: number;
+  /** 시작 잔액을 아직 모르면 없다. 잔액 부분만 빼고 그린다. */
+  remainingCreditUsd?: number;
 }): string {
   const parts = [
     params.model ?? "기본 모델",
     ...(params.permissionMode === undefined ? [] : [params.permissionMode]),
     `세션 ${usd(params.sessionCostUsd)}`,
-    `크레딧 잔여 추정 $${params.remainingCreditUsd.toFixed(2)}`,
+    ...(params.remainingCreditUsd === undefined ? [] : [`크레딧 잔여 추정 $${params.remainingCreditUsd.toFixed(2)}`]),
   ];
   return styleText("dim", parts.join(" · "));
 }

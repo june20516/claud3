@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, usePaste } from "ink";
 import { useReducer, useRef } from "react";
 import { HISTORY_SIZE } from "../../inputHistory.js";
 import { MultilineBuffer } from "../plain.js";
@@ -15,6 +15,8 @@ export interface InputBoxProps {
   /** 여러 줄 입력 중이 아닐 때 Ctrl+C. */
   onInterrupt: () => void;
   onHistoryChange?: (history: string[]) => void;
+  /** 입력이 비어 있을 때 Ctrl+D. */
+  onExit?: () => void;
 }
 
 /** 입력 중인 줄. 전각 문자·이모지가 한 칸씩 움직이도록 코드 포인트 배열로 다룬다. */
@@ -30,9 +32,11 @@ function lineOf(text: string): EditLine {
   return { chars, cursor: chars.length };
 }
 
+/** 터미널은 줄바꿈을 \r로 보내므로 \r\n·\r·\n 어느 것이든 줄 경계로 본다. */
+const LINE_BREAK = /\r\n|\r|\n/;
+
 function insertText(line: EditLine, text: string): EditLine {
-  // 대괄호 붙여넣기가 아닌 붙여넣기는 줄바꿈이 \r로 들어온다.
-  const inserted = Array.from(text.replace(/\r\n?/g, "\n"));
+  const inserted = Array.from(text);
   return {
     chars: [...line.chars.slice(0, line.cursor), ...inserted, ...line.chars.slice(line.cursor)],
     cursor: line.cursor + inserted.length,
@@ -68,7 +72,7 @@ interface InputState {
 }
 
 /** 프롬프트 입력창. 줄 끝 \\ + Enter로 여러 줄을 이어 받고, ↑/↓로 입력 기록을 오간다. */
-export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHistoryChange }: InputBoxProps) {
+export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHistoryChange, onExit }: InputBoxProps) {
   const multiline = useRef(new MultilineBuffer()).current;
   // Ink는 한 청크의 여러 키(Backspace 꾹 누름 등)를 렌더 없이 연달아 넘기므로,
   // 렌더 시점 값 대신 ref의 최신 상태를 읽고 바꾼 뒤 다시 그린다.
@@ -119,6 +123,20 @@ export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHi
     onSubmit(completed);
   };
 
+  // 한글 IME 조합 중 Return처럼 글자와 Enter가 한 청크로 오면 Ink는 return 키로 보지 않는다.
+  // readline처럼 줄 경계마다 그 앞까지 넣고 제출한다.
+  const typeText = (text: string): void => {
+    const lines = text.split(LINE_BREAK);
+    const last = lines.pop() ?? "";
+    for (const line of lines) {
+      editLine((current) => insertText(current, line));
+      submitLine();
+    }
+    if (last !== "") {
+      editLine((current) => insertText(current, last));
+    }
+  };
+
   useInput(
     (input, key) => {
       if (key.ctrl && input === "c") {
@@ -131,7 +149,12 @@ export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHi
         return;
       }
       const { historyIndex, history } = stateRef.current;
-      if (key.return) {
+      if (key.ctrl && input === "d") {
+        // readline처럼 입력 중인 글자가 있으면 무시한다.
+        if (stateRef.current.line.chars.length === 0) {
+          onExit?.();
+        }
+      } else if (key.return) {
         submitLine();
       } else if (key.upArrow) {
         if (historyIndex + 1 < history.length) {
@@ -159,8 +182,16 @@ export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHi
       } else if (key.delete) {
         editLine(deleteForward);
       } else if (!key.ctrl && !key.meta && !key.escape && !key.tab && input !== "") {
-        editLine((line) => insertText(line, input));
+        typeText(input);
       }
+    },
+    { isActive },
+  );
+
+  // 대괄호 붙여넣기는 줄바꿈째 넣고, 보내기는 사용자가 Enter로 한다.
+  usePaste(
+    (text) => {
+      editLine((line) => insertText(line, text.split(LINE_BREAK).join("\n")));
     },
     { isActive },
   );

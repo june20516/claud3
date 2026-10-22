@@ -75,12 +75,14 @@ class FakeSession {
 
 const SNAPSHOT: UsageSnapshot = { startingCreditUsd: 100, spentUsd: 0.5 };
 
-function renderApp(overrides: { recordUsage?: UiRunOptions["recordUsage"] } = {}) {
+function renderApp(
+  overrides: { recordUsage?: UiRunOptions["recordUsage"]; readUsage?: UiRunOptions["commandContext"]["readUsage"] } = {},
+) {
   const session = new FakeSession();
   const store = new InkUiStore();
   const recordUsage = overrides.recordUsage ?? vi.fn(async (_costUsd: number) => SNAPSHOT);
   const options: UiRunOptions = {
-    commandContext: { session: session.asSession(), readUsage: async () => SNAPSHOT },
+    commandContext: { session: session.asSession(), readUsage: overrides.readUsage ?? (async () => SNAPSHOT) },
     recordUsage,
   };
   const onClosed = vi.fn();
@@ -275,6 +277,34 @@ describe("InputBox", () => {
     expect(onSubmit).toHaveBeenCalledWith("a\nb");
   });
 
+  it("글자와 Enter가 한 청크로 오면 제출한다(한글 IME 조합 중 Return)", async () => {
+    const { stdin, onSubmit, frame } = renderInput();
+
+    await press(stdin, "안녕\r");
+
+    expect(onSubmit).toHaveBeenCalledWith("안녕");
+    expect(frame()).not.toContain("안녕");
+  });
+
+  it("한 청크 안의 줄마다 제출하고 줄 끝 \\ 이어 받기도 적용한다", async () => {
+    const { stdin, onSubmit } = renderInput();
+
+    await press(stdin, "a\\\rb\r");
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith("a\nb");
+  });
+
+  it("대괄호 붙여넣기는 줄바꿈째 넣고 제출하지 않는다", async () => {
+    const { stdin, onSubmit } = renderInput();
+
+    await press(stdin, "\u001b[200~첫 줄\r둘째 줄\u001b[201~");
+    expect(onSubmit).not.toHaveBeenCalled();
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("첫 줄\n둘째 줄");
+  });
+
   it("↑는 직전 입력을 보이고 보낸 줄을 기록에 넣는다", async () => {
     const { stdin, frame, onHistoryChange } = renderInput(["옛 입력"]);
 
@@ -354,6 +384,13 @@ describe("InputBox", () => {
 });
 
 describe("StatusBar", () => {
+  it("잔액을 모르면 잔액 부분만 뺀다", () => {
+    const { lastFrame } = render(<StatusBar model="claude-test" permissionMode="plan" sessionCostUsd={0.0123} />);
+
+    expect(plainFrame(lastFrame)).toContain("claude-test · plan · 세션 $0.0123");
+    expect(plainFrame(lastFrame)).not.toContain("크레딧");
+  });
+
   it("모델·모드·비용·잔액을 표시한다", () => {
     const { lastFrame } = render(
       <StatusBar model="claude-test" permissionMode="plan" sessionCostUsd={0.0123} remainingCreditUsd={99.5} />,
@@ -372,6 +409,18 @@ describe("App", () => {
     session.emit({ type: "permission_mode", mode: "plan" });
 
     await vi.waitFor(() => expect(frame()).toContain("claude-test · plan · 세션"));
+  });
+
+  it("시작 잔액을 읽지 못해도 잔액만 빼고 상태 줄을 그린다", async () => {
+    const { frame } = renderApp({
+      readUsage: async () => {
+        throw new Error("읽기 실패");
+      },
+    });
+
+    await vi.waitFor(() => expect(frame()).toContain("오류: 사용량을 읽지 못했습니다: 읽기 실패"));
+    expect(frame()).toContain("claude-test · default · 세션 $0.0000");
+    expect(frame()).not.toContain("크레딧 잔여 추정");
   });
 
   it("turn_result마다 recordUsage 결과로 잔액을 갱신한다", async () => {
@@ -558,6 +607,15 @@ describe("App", () => {
     await press(stdin, CTRL_D);
 
     expect(session.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("입력 중인 글자가 있으면 Ctrl+D를 무시한다", async () => {
+    const { stdin, session } = renderApp();
+
+    await press(stdin, "abc");
+    await press(stdin, CTRL_D);
+
+    expect(session.close).not.toHaveBeenCalled();
   });
 
   it("turn_result 뒤의 이벤트는 사용량 기록이 끝난 뒤에 처리한다", async () => {
