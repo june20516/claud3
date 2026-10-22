@@ -15,7 +15,7 @@ const PROMPT = "> ";
 const CONTINUATION_PROMPT = "… ";
 const EXIT_CONFIRM_WINDOW_MS = 2000;
 const PLAN_QUESTION = "\n계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획 › ";
-const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
+export const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
 
 export interface PlainUiIo {
   input: NodeJS.ReadableStream;
