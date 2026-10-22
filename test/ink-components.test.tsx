@@ -125,20 +125,51 @@ describe("Transcript", () => {
     expect(text).toContain("알림 문구");
   });
 
-  it("진행 중인 응답과 실행 중인 도구도 표시한다", () => {
+  it("동적 영역에는 아직 끝나지 않은 응답 줄과 실행 중 표시 한 줄만 그린다", () => {
     let state = reduceTranscript(initialTranscript, {
       type: "tool_start",
       toolUseId: "t1",
-      name: "Bash",
-      summary: "ls",
-      input: { command: "ls" },
+      name: "Edit",
+      summary: "a.ts",
+      input: { file_path: "a.ts", old_string: "old line", new_string: "new line" },
     });
-    state = reduceTranscript(state, { type: "text_delta", text: "진행 중" });
+    state = reduceTranscript(state, { type: "text_delta", text: "완성 줄\n진행 중" });
+
+    // done(Static)을 비우면 동적 영역만 남는다.
+    const { lastFrame } = render(<Transcript state={{ ...state, done: [] }} />);
+    const lines = plainFrame(lastFrame)
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+
+    expect(lines).toEqual(["⏺ Edit(a.ts) 실행 중…", "진행 중"]);
+  });
+
+  it("tool_start 직후 도구 줄과 diff는 확정 영역에 있다", () => {
+    const state = reduceTranscript(initialTranscript, {
+      type: "tool_start",
+      toolUseId: "t1",
+      name: "Edit",
+      summary: "a.ts",
+      input: { file_path: "a.ts", old_string: "old line", new_string: "new line" },
+    });
+
+    const { lastFrame } = render(<Transcript state={{ ...state, running: [] }} />);
+    const text = plainFrame(lastFrame);
+
+    expect(text).toContain("⏺ Edit(a.ts)");
+    expect(text).toContain("- old line");
+    expect(text).toContain("+ new line");
+  });
+
+  it("같은 응답의 이어지는 줄과 도구 오류 줄은 빈 줄 없이 붙는다", () => {
+    let state = reduceTranscript(initialTranscript, { type: "text_delta", text: "첫 줄\n" });
+    state = reduceTranscript(state, { type: "text_delta", text: "둘째 줄\n" });
+    state = reduceTranscript(state, { type: "tool_start", toolUseId: "t1", name: "Bash", summary: "ls", input: {} });
+    state = reduceTranscript(state, { type: "tool_end", toolUseId: "t1", isError: true, summary: "실패" });
 
     const { lastFrame } = render(<Transcript state={state} />);
 
-    expect(plainFrame(lastFrame)).toContain("⏺ Bash(ls)");
-    expect(plainFrame(lastFrame)).toContain("진행 중");
+    expect(plainFrame(lastFrame)).toContain("첫 줄\n둘째 줄\n\n⏺ Bash(ls)\n  ⎿ 실패");
   });
 });
 

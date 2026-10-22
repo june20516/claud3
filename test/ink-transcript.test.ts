@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import { describePermissionMode } from "../src/permissionModes.js";
 import { CREDIT_HINT } from "../src/ui/plain.js";
@@ -54,74 +55,110 @@ describe("commitStreaming", () => {
     expect(commitStreaming(initialTranscript)).toBe(initialTranscript);
   });
 
-  it("streaming을 done으로 옮긴다", () => {
+  it("아직 끝나지 않은 마지막 줄을 done으로 옮긴다", () => {
     const streaming = reduceAll([{ type: "text_delta", text: "일부" }]);
     const state = commitStreaming(streaming);
     expect(state.streaming).toBeUndefined();
-    expect(state.done).toEqual([{ kind: "assistant", id: 0, text: "일부" }]);
+    expect(state.done).toEqual([{ kind: "assistant", id: 0, text: "일부", attached: false }]);
     expect(streaming.streaming).toBeDefined();
+  });
+
+  it("남은 조각이 없으면 streaming만 없앤다", () => {
+    const state = commitStreaming(reduceAll([{ type: "text_delta", text: "끝\n" }]));
+    expect(state.streaming).toBeUndefined();
+    expect(state.done).toEqual([{ kind: "assistant", id: 0, text: "끝", attached: false }]);
   });
 });
 
+function assistantTexts(state: TranscriptState): string[] {
+  return state.done.flatMap((item) => (item.kind === "assistant" ? [stripVTControlCharacters(item.text)] : []));
+}
+
 describe("reduceTranscript", () => {
-  it("text_delta를 streaming에 이어 붙인다", () => {
+  it("줄바꿈 없는 text_delta는 streaming에 이어 붙인다", () => {
     const state = reduceAll([
       { type: "text_delta", text: "안" },
       { type: "text_delta", text: "녕" },
     ]);
-    expect(state.streaming).toEqual({ kind: "assistant", id: 0, text: "안녕" });
+    expect(state.streaming?.pending).toBe("안녕");
     expect(state.done).toEqual([]);
+  });
+
+  it("여러 줄 delta의 완성 줄은 바로 done에 넣고 마지막 조각만 streaming에 남긴다", () => {
+    const first = reduceAll([{ type: "text_delta", text: "첫 줄\n둘" }]);
+    expect(first.done).toEqual([{ kind: "assistant", id: 0, text: "첫 줄", attached: false }]);
+    expect(first.streaming?.pending).toBe("둘");
+
+    const second = reduceTranscript(first, { type: "text_delta", text: "째 줄\n셋째\n넷" });
+    expect(second.done[1]).toEqual({ kind: "assistant", id: 1, text: "둘째 줄\n셋째", attached: true });
+    expect(second.streaming?.pending).toBe("넷");
+  });
+
+  it("코드 블록 상태가 delta 사이에 이어진다", () => {
+    const state = commitStreaming(
+      reduceAll([
+        { type: "text_delta", text: "```\n" },
+        { type: "text_delta", text: "- a\n```\n" },
+        { type: "text_delta", text: "- b" },
+      ]),
+    );
+    expect(assistantTexts(state).join("\n")).toBe("```\n- a\n```\n• b");
+  });
+
+  it("빈 줄은 다음 내용이 올 때까지 미뤄 응답 끝에 빈 줄을 남기지 않는다", () => {
+    const trailing = commitStreaming(reduceAll([{ type: "text_delta", text: "a\n\n" }]));
+    expect(assistantTexts(trailing)).toEqual(["a"]);
+
+    const between = commitStreaming(
+      reduceAll([
+        { type: "text_delta", text: "a\n\n" },
+        { type: "text_delta", text: "b" },
+      ]),
+    );
+    expect(assistantTexts(between)).toEqual(["a", "\nb"]);
   });
 
   it("text_delta 외 이벤트는 streaming을 확정한다", () => {
     const state = reduceAll([{ type: "text_delta", text: "응답" }, toolStart]);
     expect(state.streaming).toBeUndefined();
-    expect(state.done).toEqual([{ kind: "assistant", id: 0, text: "응답" }]);
+    expect(state.done[0]).toEqual({ kind: "assistant", id: 0, text: "응답", attached: false });
     expect(state.running).toHaveLength(1);
   });
 
-  it("tool_start는 running에 추가한다", () => {
+  it("tool_start는 도구 줄(입력 포함)을 바로 done에 넣고 running에는 실행 중 표시만 둔다", () => {
     const state = reduceAll([toolStart]);
-    expect(state.done).toEqual([]);
-    expect(state.running).toEqual([
-      {
-        kind: "tool",
-        id: 0,
-        toolUseId: "t1",
-        name: "Read",
-        summary: "a.ts",
-        input: { file_path: "a.ts" },
-        status: "running",
-      },
+    expect(state.done).toEqual([
+      { kind: "tool", id: 0, name: "Read", summary: "a.ts", input: { file_path: "a.ts" } },
     ]);
+    expect(state.running).toEqual([{ toolUseId: "t1", name: "Read", summary: "a.ts" }]);
   });
 
-  it("tool_end는 running에서 done으로 옮기며 status를 바꾼다", () => {
+  it("정상으로 끝난 도구는 실행 중 표시만 없앤다", () => {
     const state = reduceAll([toolStart, { type: "tool_end", toolUseId: "t1", isError: false, summary: "ok" }]);
     expect(state.running).toEqual([]);
     expect(state.done).toHaveLength(1);
-    expect(state.done[0]).toMatchObject({ kind: "tool", toolUseId: "t1", status: "done" });
   });
 
-  it("오류로 끝난 도구는 error 상태와 errorSummary를 갖는다", () => {
+  it("오류로 끝난 도구는 도구 줄에 붙는 오류 notice를 넣는다", () => {
     const state = reduceAll([toolStart, { type: "tool_end", toolUseId: "t1", isError: true, summary: "없음" }]);
-    expect(state.done[0]).toMatchObject({ kind: "tool", status: "error", errorSummary: "없음" });
+    expect(state.running).toEqual([]);
+    expect(state.done[1]).toEqual({ kind: "notice", id: 1, tone: "error", text: "  ⎿ 없음", attached: true });
   });
 
   it("알 수 없는 toolUseId의 tool_end는 무시한다", () => {
-    const state = reduceAll([toolStart, { type: "tool_end", toolUseId: "zz", isError: false, summary: "" }]);
+    const state = reduceAll([toolStart, { type: "tool_end", toolUseId: "zz", isError: true, summary: "" }]);
     expect(state.running).toHaveLength(1);
-    expect(state.done).toEqual([]);
+    expect(state.done).toHaveLength(1);
   });
 
-  it("병렬 도구는 끝난 것만 옮긴다", () => {
+  it("병렬 도구는 끝난 것만 실행 중 표시를 없앤다", () => {
     const state = reduceAll([
       toolStart,
       { ...toolStart, toolUseId: "t2" },
       { type: "tool_end", toolUseId: "t2", isError: false, summary: "" },
     ]);
     expect(state.running.map((tool) => tool.toolUseId)).toEqual(["t1"]);
-    expect(state.done).toHaveLength(1);
+    expect(state.done).toHaveLength(2);
   });
 
   it("turn_result는 누적 비용을 갱신하고 비용 dim notice를 넣는다", () => {

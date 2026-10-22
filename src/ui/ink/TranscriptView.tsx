@@ -1,26 +1,8 @@
-import { Box, Static, Text, useStdout } from "ink";
+import { Box, Static, Text } from "ink";
 import { useMemo } from "react";
 import { formatToolDiff } from "../../diffView.js";
-import { createMarkdownRenderer } from "../../markdown.js";
-import type { AssistantItem, NoticeItem, ToolItem, TranscriptItem, TranscriptState } from "./transcript.js";
-
-/** 입력창·대화상자·상태 줄이 쓸 줄 수. 진행 중 응답은 남은 높이만큼만 보인다. */
-const RESERVED_ROWS = 10;
-const MIN_STREAMING_ROWS = 5;
-
-function renderMarkdown(text: string): string {
-  const renderer = createMarkdownRenderer();
-  return `${renderer.push(text)}${renderer.flush()}`.replace(/\n+$/, "");
-}
-
-/** 긴 응답이 화면을 넘어 입력창을 밀어내지 않도록 끝쪽 maxLines줄만 남긴다. */
-function lastLines(text: string, maxLines: number | undefined): string {
-  if (maxLines === undefined) {
-    return text;
-  }
-  const lines = text.split("\n");
-  return lines.length <= maxLines ? text : lines.slice(-maxLines).join("\n");
-}
+import { renderMarkdownLine } from "../../markdown.js";
+import type { NoticeItem, RunningTool, StreamingText, ToolItem, TranscriptItem, TranscriptState } from "./transcript.js";
 
 function UserView({ text }: { text: string }) {
   return (
@@ -31,20 +13,14 @@ function UserView({ text }: { text: string }) {
   );
 }
 
-function AssistantView({ item, maxLines }: { item: AssistantItem; maxLines?: number }) {
-  const rendered = useMemo(() => renderMarkdown(item.text), [item.text]);
-  return <Text>{lastLines(rendered, maxLines)}</Text>;
-}
-
 function ToolView({ item }: { item: ToolItem }) {
   const diff = useMemo(() => formatToolDiff(item.name, item.input), [item.name, item.input]);
   return (
     <Box flexDirection="column">
       <Text>
-        <Text dimColor={item.status === "running"}>⏺</Text> {item.name}({item.summary})
+        ⏺ {item.name}({item.summary})
       </Text>
       {diff === undefined ? null : <Text>{diff}</Text>}
-      {item.status === "error" ? <Text color="red">{`  ⎿ ${item.errorSummary ?? ""}`}</Text> : null}
     </Box>
   );
 }
@@ -57,12 +33,12 @@ function NoticeView({ item }: { item: NoticeItem }) {
   );
 }
 
-function ItemView({ item, maxLines }: { item: TranscriptItem; maxLines?: number }) {
+function ItemView({ item }: { item: TranscriptItem }) {
   switch (item.kind) {
     case "user":
       return <UserView text={item.text} />;
     case "assistant":
-      return <AssistantView item={item} maxLines={maxLines} />;
+      return <Text>{item.text}</Text>;
     case "tool":
       return <ToolView item={item} />;
     case "notice":
@@ -70,29 +46,50 @@ function ItemView({ item, maxLines }: { item: TranscriptItem; maxLines?: number 
   }
 }
 
-/** 확정 항목은 Static으로 한 번만 그리고, 실행 중인 도구와 진행 중 응답만 다시 그린다. */
+/** 같은 응답의 이어지는 줄과 도구 오류 줄은 빈 줄 없이 앞 항목에 붙인다. */
+function isAttached(item: TranscriptItem): boolean {
+  return (item.kind === "assistant" || item.kind === "notice") && item.attached === true;
+}
+
+/** 실행 중 표시. 폭을 넘어도 한 줄을 지키도록 자른다. */
+function RunningToolView({ tool }: { tool: RunningTool }) {
+  return (
+    <Text dimColor wrap="truncate">
+      ⏺ {tool.name}({tool.summary}) 실행 중…
+    </Text>
+  );
+}
+
+/** 아직 줄바꿈이 오지 않은 응답의 마지막 줄. */
+function PendingLineView({ stream }: { stream: StreamingText }) {
+  return <Text>{renderMarkdownLine(stream.pending, { inCodeBlock: stream.inCodeBlock })}</Text>;
+}
+
+/**
+ * 확정 항목은 Static으로 한 번만 그리고, 실행 중 표시와 진행 중 응답의 마지막 줄만 다시 그린다.
+ * 동적 영역이 터미널 높이를 넘으면 Ink가 매 프레임 전체를 다시 써서 scrollback에 사본이 쌓이므로 작게 유지한다.
+ */
 export function Transcript({ state }: { state: TranscriptState }) {
-  const { stdout } = useStdout();
-  // 테스트용 스트림처럼 TTY가 아니면 rows가 없다.
-  const rows = "rows" in stdout && typeof stdout.rows === "number" ? stdout.rows : undefined;
-  const streamingRows = rows === undefined ? undefined : Math.max(rows - RESERVED_ROWS, MIN_STREAMING_ROWS);
+  const { streaming } = state;
   return (
     <>
       <Static items={state.done}>
         {(item) => (
-          <Box key={item.id} marginTop={1}>
+          <Box key={item.id} marginTop={isAttached(item) ? 0 : 1}>
             <ItemView item={item} />
           </Box>
         )}
       </Static>
-      {state.running.map((tool) => (
-        <Box key={tool.id} marginTop={1}>
-          <ItemView item={tool} />
+      {state.running.length === 0 ? null : (
+        <Box marginTop={1} flexDirection="column">
+          {state.running.map((tool) => (
+            <RunningToolView key={tool.toolUseId} tool={tool} />
+          ))}
         </Box>
-      ))}
-      {state.streaming === undefined ? null : (
-        <Box marginTop={1}>
-          <ItemView item={state.streaming} maxLines={streamingRows} />
+      )}
+      {streaming === undefined || streaming.pending === "" ? null : (
+        <Box marginTop={streaming.started ? 0 : 1}>
+          <PendingLineView stream={streaming} />
         </Box>
       )}
     </>
