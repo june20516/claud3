@@ -48,7 +48,7 @@ claud3/
     commands.ts    claud3 자체 슬래시 명령
     ui/
       plain.ts     1·2단계 UI (readline + 색상 출력)
-      ink/         3단계 TUI
+      ink/         3단계 TUI (기본 화면)
     main.ts        진입점, 인자 처리
   test/
 ```
@@ -160,7 +160,7 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
   - 확인 결과(`docs/suberpowers/notes/probe-results.md` "계획 승인 확인"): 입력의 계획 본문 필드는 `plan`, 경로 필드는 `planFilePath`. y(allow) 승인 뒤 모드는 `default`, e(allow + `updatedPermissions` setMode acceptEdits) 승인 뒤 모드는 `acceptEdits`이므로 updatedPermissions 방식을 채택한다. 승인 직후 `setPermissionMode("acceptEdits")`를 호출하는 대안은 필요 없었음.
 - **안내**: `/help`와 README에 `--permission-mode`, `/mode`, Shift+Tab, 계획 승인 y/e/n을 추가한다. `CLAUDE.md` 구조 표에 `permissionModes`를 추가한다.
 
-### 3단계: Ink TUI
+### 3단계: Ink TUI (완료 2026-10-22)
 
 - 같은 `session`과 `UiEvent`를 쓰는 Ink 화면: 입력창, 스크롤되는 대화, 도구 실행 표시, 권한 요청 창, 하단 상태 줄
 - `--plain`으로 1·2단계 UI 유지 (stdin이 TTY가 아니면 자동으로 plain)
@@ -170,6 +170,10 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
   - 권한 요청 창은 도구 질문(y/a/n)과 계획 승인 질문(y/e/n) 두 종류다. 계획 본문은 대화 영역에 출력하고 창에는 질문만 둔다.
 - 명령 출력(`print`)과 입력 기록 저장은 화면마다 다르므로 화면이 직접 제공한다(`UiRunOptions`, `inputHistory`).
 - 구현 계획: `docs/suberpowers/plans/2026-10-21-claud3-stage3.md`
+- 구현 중 바뀐 점:
+  - 대화 영역 컴포넌트는 `Transcript.tsx`가 아니라 `TranscriptView.tsx`다. macOS의 대소문자 무시 파일 시스템에서 상태 리듀서 `transcript.ts`와 이름이 충돌한다.
+  - header는 별도 영역이 아니라 대화 흐름 안의 dim 줄로 표시한다.
+  - `(중단됨)`은 dim으로 표시한다.
 
 ## 7. 자기 개발 (self-hosting)
 

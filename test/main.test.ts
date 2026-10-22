@@ -14,11 +14,16 @@ describe("parseArgs", () => {
       model: "claude-sonnet-5-5",
       help: false,
       version: false,
+      plain: false,
     });
   });
 
-  it("인자가 없으면 help=false만", () => {
-    expect(parseArgs([])).toEqual({ help: false, version: false });
+  it("인자가 없으면 help=false, version=false, plain=false만", () => {
+    expect(parseArgs([])).toEqual({ help: false, version: false, plain: false });
+  });
+
+  it("--plain은 plain=true", () => {
+    expect(parseArgs(["--plain"]).plain).toBe(true);
   });
 
   it("--help와 -h", () => {

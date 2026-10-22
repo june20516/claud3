@@ -9,13 +9,16 @@ import { buildBaseOptions } from "./config.js";
 import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionModes.js";
 import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
+import { createInkUi } from "./ui/ink/index.js";
 import { createPlainUi } from "./ui/plain.js";
+import type { ChatUi } from "./ui/runOptions.js";
 import { addUsage, configDir, readUsage } from "./usageStore.js";
 
 export interface CliArgs {
   resume?: string;
   model?: string;
   permissionMode?: SelectablePermissionMode;
+  plain: boolean;
   help: boolean;
   version: boolean;
 }
@@ -28,6 +31,7 @@ Claude Agent SDK로 실행하는 터미널 코딩 CLI입니다. API 키는 macOS
   --resume <id>   이전 세션을 이어서 실행
   --model <name>  사용할 모델 (예: claude-sonnet-5-5)
   --permission-mode <mode>  권한 모드 (default, acceptEdits, plan, auto)
+  --plain         readline 화면으로 시작 (기본은 Ink 화면)
   -v, --version   버전 출력
   -h, --help      이 도움말 출력
 
@@ -50,6 +54,7 @@ export function parseArgs(argv: string[]): CliArgs {
       resume: { type: "string" },
       model: { type: "string" },
       "permission-mode": { type: "string" },
+      plain: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", short: "v", default: false },
     },
@@ -62,6 +67,7 @@ export function parseArgs(argv: string[]): CliArgs {
     throw new Error(unknownPermissionModeMessage(permissionModeValue));
   }
   return {
+    plain: values.plain ?? false,
     help: values.help ?? false,
     version: values.version ?? false,
     ...(values.resume === undefined ? {} : { resume: values.resume }),
@@ -107,11 +113,11 @@ async function main(): Promise<number> {
     model: args.model,
     permissionMode: args.permissionMode,
   });
-  const ui = createPlainUi({
-    input: process.stdin,
-    output: process.stdout,
-    historyFile: join(configDir(), "history"),
-  });
+  const historyFile = join(configDir(), "history");
+  const ui: ChatUi =
+    args.plain || !process.stdin.isTTY
+      ? createPlainUi({ input: process.stdin, output: process.stdout, historyFile })
+      : createInkUi({ stdin: process.stdin, stdout: process.stdout, historyFile });
   const session = new Session({ queryFn: query, baseOptions, prompter: ui.prompter, resume: args.resume });
   await ui.run(session, {
     commandContext: {
