@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from "ink";
-import { useRef, useState } from "react";
+import { useReducer, useRef } from "react";
 import { HISTORY_SIZE } from "../../inputHistory.js";
 import { MultilineBuffer } from "../plain.js";
 
@@ -57,43 +57,65 @@ function moveCursor(line: EditLine, cursor: number): EditLine {
   return { ...line, cursor: Math.min(Math.max(cursor, 0), line.chars.length) };
 }
 
+interface InputState {
+  line: EditLine;
+  /** 줄 끝 \\로 이어 받는 중인 앞 줄들(입력한 그대로). */
+  collectedLines: string[];
+  history: readonly string[];
+  /** -1은 기록이 아닌 지금 쓰는 줄(draft)을 보고 있다는 뜻이다. */
+  historyIndex: number;
+  draft: string;
+}
+
 /** 프롬프트 입력창. 줄 끝 \\ + Enter로 여러 줄을 이어 받고, ↑/↓로 입력 기록을 오간다. */
 export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHistoryChange }: InputBoxProps) {
   const multiline = useRef(new MultilineBuffer()).current;
-  const [line, setLine] = useState<EditLine>(EMPTY_LINE);
-  const [collectedLines, setCollectedLines] = useState<string[]>([]);
-  const [history, setHistory] = useState<readonly string[]>(initialHistory);
-  // -1은 기록이 아닌 지금 쓰는 줄(draft)을 보고 있다는 뜻이다.
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [draft, setDraft] = useState("");
+  // Ink는 한 청크의 여러 키(Backspace 꾹 누름 등)를 렌더 없이 연달아 넘기므로,
+  // 렌더 시점 값 대신 ref의 최신 상태를 읽고 바꾼 뒤 다시 그린다.
+  const stateRef = useRef<InputState>({
+    line: EMPTY_LINE,
+    collectedLines: [],
+    history: initialHistory,
+    historyIndex: -1,
+    draft: "",
+  });
+  const [, rerender] = useReducer((count: number) => count + 1, 0);
+
+  const update = (changes: Partial<InputState>): void => {
+    stateRef.current = { ...stateRef.current, ...changes };
+    rerender();
+  };
+
+  const editLine = (edit: (line: EditLine) => EditLine): void => {
+    update({ line: edit(stateRef.current.line) });
+  };
 
   const showHistoryEntry = (index: number): void => {
-    setHistoryIndex(index);
-    setLine(lineOf(index === -1 ? draft : (history[index] ?? "")));
+    const { history, draft } = stateRef.current;
+    update({ historyIndex: index, line: lineOf(index === -1 ? draft : (history[index] ?? "")) });
   };
 
   // readline처럼 빈 줄과 직전과 같은 줄은 기록하지 않는다. 기록 파일은 줄 단위라 줄바꿈이 든 붙여넣기도 뺀다.
   const recordHistory = (text: string): void => {
+    const { history } = stateRef.current;
     if (text === "" || text.includes("\n") || text === history[0]) {
       return;
     }
     const next = [text, ...history].slice(0, HISTORY_SIZE);
-    setHistory(next);
+    update({ history: next });
     onHistoryChange?.(next);
   };
 
   const submitLine = (): void => {
-    const text = line.chars.join("");
+    const text = stateRef.current.line.chars.join("");
     recordHistory(text);
-    setLine(EMPTY_LINE);
-    setHistoryIndex(-1);
-    setDraft("");
+    update({ line: EMPTY_LINE, historyIndex: -1, draft: "" });
     const completed = multiline.push(text);
     if (completed === undefined) {
-      setCollectedLines((lines) => [...lines, text]);
+      update({ collectedLines: [...stateRef.current.collectedLines, text] });
       return;
     }
-    setCollectedLines([]);
+    update({ collectedLines: [] });
     onSubmit(completed);
   };
 
@@ -102,19 +124,19 @@ export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHi
       if (key.ctrl && input === "c") {
         if (multiline.isCollecting) {
           multiline.reset();
-          setCollectedLines([]);
-          setLine(EMPTY_LINE);
+          update({ collectedLines: [], line: EMPTY_LINE });
           return;
         }
         onInterrupt();
         return;
       }
+      const { historyIndex, history } = stateRef.current;
       if (key.return) {
         submitLine();
       } else if (key.upArrow) {
         if (historyIndex + 1 < history.length) {
           if (historyIndex === -1) {
-            setDraft(line.chars.join(""));
+            update({ draft: stateRef.current.line.chars.join("") });
           }
           showHistoryEntry(historyIndex + 1);
         }
@@ -123,26 +145,27 @@ export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHi
           showHistoryEntry(historyIndex - 1);
         }
       } else if (key.leftArrow) {
-        setLine(moveCursor(line, line.cursor - 1));
+        editLine((line) => moveCursor(line, line.cursor - 1));
       } else if (key.rightArrow) {
-        setLine(moveCursor(line, line.cursor + 1));
+        editLine((line) => moveCursor(line, line.cursor + 1));
       } else if (key.home || (key.ctrl && input === "a")) {
-        setLine(moveCursor(line, 0));
+        editLine((line) => moveCursor(line, 0));
       } else if (key.end || (key.ctrl && input === "e")) {
-        setLine(moveCursor(line, line.chars.length));
+        editLine((line) => moveCursor(line, line.chars.length));
       } else if (key.ctrl && input === "u") {
-        setLine({ chars: line.chars.slice(line.cursor), cursor: 0 });
+        editLine((line) => ({ chars: line.chars.slice(line.cursor), cursor: 0 }));
       } else if (key.backspace) {
-        setLine(deleteBackward(line));
+        editLine(deleteBackward);
       } else if (key.delete) {
-        setLine(deleteForward(line));
+        editLine(deleteForward);
       } else if (!key.ctrl && !key.meta && !key.escape && !key.tab && input !== "") {
-        setLine(insertText(line, input));
+        editLine((line) => insertText(line, input));
       }
     },
     { isActive },
   );
 
+  const { line, collectedLines } = stateRef.current;
   const before = line.chars.slice(0, line.cursor).join("");
   const atCursor = line.chars[line.cursor];
   const after = line.chars.slice(line.cursor + 1).join("");

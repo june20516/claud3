@@ -206,8 +206,9 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
   };
 
   // 대화상자가 떠 있는 동안 Esc·단축키는 PermissionDialog가 받는다.
+  // 한 청크의 여러 키는 렌더 없이 연달아 오므로 대화상자 여부는 store에서 바로 읽는다.
   useInput((input, key) => {
-    if (dialog !== undefined) {
+    if (store.getSnapshot().dialog !== undefined) {
       if (key.ctrl && input === "c") {
         store.answer("deny");
         void session.interrupt();

@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from "ink";
-import { useState } from "react";
+import { useReducer, useRef } from "react";
 import type { PermissionDecision, PermissionRequest } from "../../types.js";
 import { parseDecision, parsePlanDecision } from "../plain.js";
 
@@ -35,7 +35,14 @@ export function PermissionDialog({ request, onDecision }: PermissionDialogProps)
   const choices = isPlan ? PLAN_CHOICES : TOOL_CHOICES;
   const parse = isPlan ? parsePlanDecision : parseDecision;
   const title = isPlan ? "계획을 승인할까요?" : `${request.toolName}(${request.summary}) 허용할까요?`;
-  const [selected, setSelected] = useState(0);
+  // 한 청크의 여러 키(↓↓ Enter)가 렌더 없이 연달아 오므로 선택은 ref에서 읽고 바꾼다.
+  const selectedRef = useRef(0);
+  const [, rerender] = useReducer((count: number) => count + 1, 0);
+  const select = (index: number): void => {
+    selectedRef.current = Math.min(Math.max(index, 0), choices.length - 1);
+    rerender();
+  };
+  const selected = selectedRef.current;
 
   useInput((input, key) => {
     if (key.escape) {
@@ -43,15 +50,15 @@ export function PermissionDialog({ request, onDecision }: PermissionDialogProps)
       return;
     }
     if (key.upArrow) {
-      setSelected((index) => Math.max(index - 1, 0));
+      select(selectedRef.current - 1);
       return;
     }
     if (key.downArrow) {
-      setSelected((index) => Math.min(index + 1, choices.length - 1));
+      select(selectedRef.current + 1);
       return;
     }
     if (key.return) {
-      const choice = choices[selected];
+      const choice = choices[selectedRef.current];
       if (choice !== undefined) {
         onDecision(choice.decision);
       }

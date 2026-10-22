@@ -177,6 +177,15 @@ describe("PermissionDialog (도구)", () => {
     await vi.waitFor(() => expect(onDecision).toHaveBeenCalledWith("deny"));
   });
 
+  it("한 청크로 들어온 ↓ 두 번 + Enter도 deny", async () => {
+    const { stdin, onDecision } = renderDialog();
+
+    await press(stdin, `${DOWN}${DOWN}${ENTER}`);
+
+    expect(onDecision).toHaveBeenCalledTimes(1);
+    expect(onDecision).toHaveBeenCalledWith("deny");
+  });
+
   it("↓ 두 번 + Enter는 deny", async () => {
     const { stdin, onDecision } = renderDialog();
 
@@ -279,6 +288,36 @@ describe("InputBox", () => {
     await press(stdin, DOWN);
     await press(stdin, DOWN);
     expect(frame()).not.toContain("hello");
+  });
+
+  it("한 청크로 들어온 Backspace 여러 개를 모두 처리한다", async () => {
+    const { stdin, onSubmit } = renderInput();
+
+    await press(stdin, "abcd");
+    await press(stdin, "\u007f\u007f\u007f");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("a");
+  });
+
+  it("한 청크로 들어온 ← 여러 개 뒤 입력은 그 위치에 들어간다", async () => {
+    const { stdin, onSubmit } = renderInput();
+
+    await press(stdin, "abc");
+    await press(stdin, "\u001b[D\u001b[D");
+    await press(stdin, "X");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("aXbc");
+  });
+
+  it("한 청크로 들어온 ↑ 두 번은 두 칸 앞 기록을 보인다", async () => {
+    const { stdin, onSubmit } = renderInput(["둘째", "첫째"]);
+
+    await press(stdin, `${UP}${UP}`);
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("첫째");
   });
 
   it("전각 문자를 지우면 한 글자씩 지워진다", async () => {
