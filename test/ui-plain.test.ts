@@ -18,7 +18,7 @@ import {
   parseDecision,
   parsePlanDecision,
 } from "../src/ui/plain.js";
-import type { PlainRunOptions } from "../src/ui/plain.js";
+import type { UiRunOptions } from "../src/ui/runOptions.js";
 
 describe("parseDecision", () => {
   it("y/yes는 allow, n/no는 deny, a/always는 always (대소문자 무시)", () => {
@@ -211,6 +211,11 @@ describe("MultilineBuffer", () => {
 });
 
 describe("formatStatusLine", () => {
+  it("잔액을 모르면 잔액 부분만 뺀다", () => {
+    const text = stripVTControlCharacters(formatStatusLine({ model: "m", sessionCostUsd: 0.0123 }));
+    expect(text).toBe("m · 세션 $0.0123");
+  });
+
   it("모델 · 세션 비용 · 크레딧 잔여 추정", () => {
     const text = formatStatusLine({ model: "m", sessionCostUsd: 0.0123, remainingCreditUsd: 99.5 });
     expect(text).toContain("m · 세션 $0.0123 · 크레딧 잔여 추정 $99.50");
@@ -367,7 +372,7 @@ class FakeSession {
 const SNAPSHOT: UsageSnapshot = { startingCreditUsd: 100, spentUsd: 0.5 };
 
 interface RunUiOverrides {
-  recordUsage?: PlainRunOptions["recordUsage"];
+  recordUsage?: UiRunOptions["recordUsage"];
   readUsage?: CommandContext["readUsage"];
 }
 
@@ -379,17 +384,15 @@ function createRunUi(overrides: RunUiOverrides = {}, terminal = false) {
     state.written += chunk.toString();
   });
   const session = new FakeSession();
-  const printed: string[] = [];
-  const commandContext: CommandContext = {
+  const commandContext: UiRunOptions["commandContext"] = {
     session: session.asSession(),
     readUsage: overrides.readUsage ?? (async () => SNAPSHOT),
-    print: (text) => printed.push(text),
   };
   const recordUsage = overrides.recordUsage ?? vi.fn(async (_costUsd: number) => SNAPSHOT);
   const ui = createPlainUi({ input, output, terminal });
   const running = ui.run(session.asSession(), { commandContext, recordUsage });
   const plain = (): string => stripVTControlCharacters(state.written);
-  return { input, state, plain, session, printed, recordUsage, running, ui };
+  return { input, state, plain, session, recordUsage, running, ui };
 }
 
 describe("createPlainUi run", () => {
@@ -405,11 +408,11 @@ describe("createPlainUi run", () => {
   });
 
   it("내장 명령은 Claude에게 보내지 않고 실행한다", async () => {
-    const { input, session, printed } = createRunUi();
+    const { input, plain, session } = createRunUi();
 
     input.write("/help\n");
 
-    await vi.waitFor(() => expect(printed).toEqual([HELP_TEXT]));
+    await vi.waitFor(() => expect(plain()).toContain(HELP_TEXT));
     expect(session.sent).toEqual([]);
   });
 

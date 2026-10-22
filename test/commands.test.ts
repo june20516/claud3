@@ -253,6 +253,10 @@ describe("runCommand", () => {
     }
   });
 
+  it("HELP_TEXT 실행 옵션에 --plain 안내가 있다", () => {
+    expect(HELP_TEXT.split("\n")).toContain("  claud3 --plain           readline 화면으로 시작");
+  });
+
   it("/help에 개발판·안정판 안내가 실행 옵션 뒤에 있다", () => {
     expect(HELP_TEXT).toContain("개발판·안정판");
     expect(HELP_TEXT.indexOf("실행 옵션")).toBeLessThan(HELP_TEXT.indexOf("개발판·안정판"));

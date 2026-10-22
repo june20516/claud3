@@ -48,7 +48,7 @@ claud3/
     commands.ts    claud3 자체 슬래시 명령
     ui/
       plain.ts     1·2단계 UI (readline + 색상 출력)
-      ink/         3단계 TUI
+      ink/         3단계 TUI (기본 화면)
     main.ts        진입점, 인자 처리
   test/
 ```
@@ -160,16 +160,23 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
   - 확인 결과(`docs/suberpowers/notes/probe-results.md` "계획 승인 확인"): 입력의 계획 본문 필드는 `plan`, 경로 필드는 `planFilePath`. y(allow) 승인 뒤 모드는 `default`, e(allow + `updatedPermissions` setMode acceptEdits) 승인 뒤 모드는 `acceptEdits`이므로 updatedPermissions 방식을 채택한다. 승인 직후 `setPermissionMode("acceptEdits")`를 호출하는 대안은 필요 없었음.
 - **안내**: `/help`와 README에 `--permission-mode`, `/mode`, Shift+Tab, 계획 승인 y/e/n을 추가한다. `CLAUDE.md` 구조 표에 `permissionModes`를 추가한다.
 
-### 3단계: Ink TUI
+### 3단계: Ink TUI (완료 2026-10-22)
 
 - 같은 `session`과 `UiEvent`를 쓰는 Ink 화면: 입력창, 스크롤되는 대화, 도구 실행 표시, 권한 요청 창, 하단 상태 줄
-- `--plain`으로 1·2단계 UI 유지 (stdin이 TTY가 아니면 자동으로 plain)
+- `--plain`으로 1·2단계 UI 유지 (stdin이나 stdout이 TTY가 아니면 자동으로 plain)
 - 할 수 있는 일은 plain 화면과 같다 (갱신 2026-10-22, 권한 모드 추가분 반영):
   - 상태 줄에 권한 모드를 포함하고, 모드가 바뀌면 바로 갱신한다.
   - Shift+Tab 모드 순환, `/mode`, 입력 기록(↑/↓, 파일 저장), 여러 줄 입력, Esc·Ctrl+C·Ctrl+D 동작이 같다.
   - 권한 요청 창은 도구 질문(y/a/n)과 계획 승인 질문(y/e/n) 두 종류다. 계획 본문은 대화 영역에 출력하고 창에는 질문만 둔다.
 - 명령 출력(`print`)과 입력 기록 저장은 화면마다 다르므로 화면이 직접 제공한다(`UiRunOptions`, `inputHistory`).
 - 구현 계획: `docs/suberpowers/plans/2026-10-21-claud3-stage3.md`
+- 구현 중 바뀐 점:
+  - 대화 영역 컴포넌트는 `Transcript.tsx`가 아니라 `TranscriptView.tsx`다. macOS의 대소문자 무시 파일 시스템에서 상태 리듀서 `transcript.ts`와 이름이 충돌한다.
+  - header는 별도 영역이 아니라 대화 흐름 안의 dim 줄로 표시한다.
+  - `(중단됨)`은 dim으로 표시한다.
+  - 동적 영역을 작게 유지한다(최종 review 반영): 응답은 완성된 줄을 바로 확정(Static)하고 진행 중인 마지막 줄만 동적으로 그린다. 도구는 시작할 때 이름·요약·diff를 확정하고 동적 영역에는 실행 중 한 줄만 둔다. 오류로 끝나면 `  ⎿ 요약` 줄을 더한다. 터미널 높이를 넘겨 scrollback에 사본이 쌓이는 것을 막는다.
+  - 입력창은 한 번에 들어온 글자와 Enter(한글 IME 조합 중 Return)를 줄마다 제출한다. 붙여넣기(bracketed paste)는 줄바꿈째 입력창에 넣는다.
+  - 시작 잔액을 모르면 상태 줄에서 잔액만 빼고 보인다. Ctrl+D는 입력이 비어 있을 때만 종료한다.
 
 ## 7. 자기 개발 (self-hosting)
 
