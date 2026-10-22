@@ -1,23 +1,18 @@
-import { readFileSync } from "node:fs";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { styleText } from "node:util";
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { parseInput, runCommand } from "../commands.js";
-import type { CommandContext } from "../commands.js";
 import { formatToolDiff } from "../diffView.js";
+import { HISTORY_SIZE, createHistorySaver, loadHistory } from "../inputHistory.js";
 import { createMarkdownRenderer } from "../markdown.js";
 import { describePermissionMode, nextPermissionMode } from "../permissionModes.js";
 import type { Session } from "../session.js";
 import type { PermissionDecision, PermissionPrompter, PermissionRequest, UiEvent } from "../types.js";
 import { remainingCreditUsd } from "../usageStore.js";
-import type { UsageSnapshot } from "../usageStore.js";
+import type { ChatUi, UiRunOptions } from "./runOptions.js";
 
 const PROMPT = "> ";
 const CONTINUATION_PROMPT = "… ";
-const HISTORY_SIZE = 500;
-const HISTORY_FILE_MODE = 0o600;
 const EXIT_CONFIRM_WINDOW_MS = 2000;
 const PLAN_QUESTION = "\n계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획 › ";
 const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
@@ -29,16 +24,6 @@ export interface PlainUiIo {
   terminal?: boolean;
   /** 입력 기록 파일. 첫 줄이 가장 최근 입력이다. */
   historyFile?: string;
-}
-
-export interface PlainRunOptions {
-  commandContext: CommandContext;
-  recordUsage: (costUsd: number) => Promise<UsageSnapshot>;
-}
-
-export interface PlainUi {
-  prompter: PermissionPrompter;
-  run(session: Session, options: PlainRunOptions): Promise<void>;
 }
 
 /** 줄 끝의 \\로 이어지는 여러 줄 입력을 모은다. */
@@ -116,7 +101,7 @@ export function parsePlanDecision(answer: string): PermissionDecision | undefine
 }
 
 /** 계획 질문 앞에 보일 내용. 본문, 계획 파일 경로, 도구 요약 순으로 있는 것 하나만 보인다. */
-function formatPlan(request: PermissionRequest, plan: { text?: string; filePath?: string }): string {
+export function formatPlanPreview(request: PermissionRequest, plan: { text?: string; filePath?: string }): string {
   if (plan.text !== undefined && plan.text.trim() !== "") {
     const renderer = createMarkdownRenderer();
     return `\n${renderer.push(`${plan.text}\n`)}${renderer.flush()}`;
@@ -177,23 +162,8 @@ function errorLine(message: string): string {
   return `${styleText("red", `오류: ${message}`)}\n`;
 }
 
-/** 기록 파일을 읽는다. 파일이 없거나 읽을 수 없으면 빈 기록으로 시작한다. */
-function loadHistory(historyFile: string | undefined): string[] {
-  if (historyFile === undefined) {
-    return [];
-  }
-  try {
-    return readFileSync(historyFile, "utf8")
-      .split("\n")
-      .filter((line) => line !== "")
-      .slice(0, HISTORY_SIZE);
-  } catch {
-    return [];
-  }
-}
-
 /** readline 기반 화면. 이벤트를 그리고, 입력과 권한 응답만 Session에 돌려준다. */
-export function createPlainUi({ input, output, terminal = isTty(input), historyFile }: PlainUiIo): PlainUi {
+export function createPlainUi({ input, output, terminal = isTty(input), historyFile }: PlainUiIo): ChatUi {
   const initialHistory = loadHistory(historyFile);
   const rl = createInterface({
     input,
@@ -213,24 +183,12 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
     }
   };
 
-  // 저장이 겹치지 않도록 차례로 쓰고, 실패는 처음 한 번만 알린다.
-  let historyWrites: Promise<void> = Promise.resolve();
-  let hasWarnedHistory = false;
-  const saveHistory = (file: string, history: string[]): void => {
-    const content = `${history.slice(0, HISTORY_SIZE).join("\n")}\n`;
-    historyWrites = historyWrites
-      .then(async () => {
-        await mkdir(dirname(file), { recursive: true });
-        await writeFile(file, content, { encoding: "utf8", mode: HISTORY_FILE_MODE });
-        await chmod(file, HISTORY_FILE_MODE);
-      })
-      .catch((error: unknown) => {
-        if (!hasWarnedHistory) {
-          hasWarnedHistory = true;
-          write(`\n${styleText("dim", `입력 기록을 저장하지 못했습니다: ${errorText(error)}`)}\n`);
-        }
-      });
-  };
+  const saveHistory =
+    historyFile === undefined
+      ? undefined
+      : createHistorySaver(historyFile, (error) =>
+          write(`\n${styleText("dim", `입력 기록을 저장하지 못했습니다: ${errorText(error)}`)}\n`),
+        );
 
   // readline은 권한 질문의 답도 기록에 넣고, 답을 넘기기 전에 history 이벤트를 낸다.
   // 이벤트의 배열은 readline 내부 기록 자체이므로, 질문 중이면 직전 기록으로 되돌리고 저장하지 않는다.
@@ -241,9 +199,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
       return;
     }
     acceptedHistory = [...history];
-    if (historyFile !== undefined) {
-      saveHistory(historyFile, history);
-    }
+    saveHistory?.(history);
   });
 
   type AskResult = { kind: "answer"; text: string } | { kind: "cancelled"; by: "user" | "sdk" };
@@ -276,7 +232,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
         : PLAN_QUESTION;
     const parse = plan === undefined ? parseDecision : parsePlanDecision;
     if (plan !== undefined && !signal?.aborted) {
-      write(formatPlan(request, plan));
+      write(formatPlanPreview(request, plan));
     }
     for (;;) {
       if (signal?.aborted) {
@@ -309,7 +265,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
     write(`\n${styleText("yellow", "(중단됨)")}\n`);
   };
 
-  const run = (session: Session, { commandContext, recordUsage }: PlainRunOptions): Promise<void> =>
+  const run = (session: Session, { commandContext, recordUsage }: UiRunOptions): Promise<void> =>
     new Promise((resolve) => {
       activeSession = session;
       const multiline = new MultilineBuffer();
@@ -373,6 +329,10 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
           .catch((error: unknown) => write(errorLine(errorText(error))));
       });
 
+      const print = (text: string): void => {
+        output.write(`${text}\n`);
+      };
+
       const submit = (text: string): void => {
         const parsed = parseInput(text);
         if (parsed.kind === "prompt") {
@@ -380,7 +340,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
           promptIfIdle();
           return;
         }
-        runCommand(parsed, commandContext)
+        runCommand(parsed, { ...commandContext, print })
           .catch((error: unknown) => write(errorLine(errorText(error))))
           .finally(promptIfIdle);
       };

@@ -117,7 +117,6 @@ async function main(): Promise<number> {
     commandContext: {
       session,
       readUsage: () => readUsage(),
-      print: (text) => process.stdout.write(`${text}\n`),
     },
     recordUsage: (costUsd) => addUsage(costUsd),
   });
