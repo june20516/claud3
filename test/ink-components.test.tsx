@@ -13,6 +13,7 @@ import { PermissionDialog } from "../src/ui/ink/PermissionDialog.js";
 import { StatusBar } from "../src/ui/ink/StatusBar.js";
 import { Transcript } from "../src/ui/ink/TranscriptView.js";
 import { createInkUi } from "../src/ui/ink/index.js";
+import type { TranscriptState } from "../src/ui/ink/transcript.js";
 import { addNotice, addUserInput, initialTranscript, reduceTranscript } from "../src/ui/ink/transcript.js";
 import type { UiRunOptions } from "../src/ui/runOptions.js";
 
@@ -125,23 +126,56 @@ describe("Transcript", () => {
     expect(text).toContain("알림 문구");
   });
 
-  it("동적 영역에는 아직 끝나지 않은 응답 줄과 실행 중 표시 한 줄만 그린다", () => {
-    let state = reduceTranscript(initialTranscript, {
+  describe("진행 표시 줄", () => {
+    const editStart: UiEvent = {
       type: "tool_start",
       toolUseId: "t1",
       name: "Edit",
       summary: "a.ts",
       input: { file_path: "a.ts", old_string: "old line", new_string: "new line" },
-    });
-    state = reduceTranscript(state, { type: "text_delta", text: "완성 줄\n진행 중" });
+    };
 
     // done(Static)을 비우면 동적 영역만 남는다.
-    const { lastFrame } = render(<Transcript state={{ ...state, done: [] }} />);
-    const lines = plainFrame(lastFrame)
-      .split("\n")
-      .filter((line) => line.trim() !== "");
+    function dynamicLines(state: TranscriptState): string[] {
+      const { lastFrame } = render(<Transcript state={{ ...state, done: [] }} />);
+      return plainFrame(lastFrame).split("\n");
+    }
 
-    expect(lines).toEqual(["⏺ Edit(a.ts) 실행 중…", "진행 중"]);
+    it("응답이 나오는 동안에도 동적 영역 높이가 같아 상태 줄이 움직이지 않는다", () => {
+      const idle = initialTranscript;
+      const streaming = reduceTranscript(idle, { type: "text_delta", text: "진행 중" });
+      const lineDone = reduceTranscript(streaming, { type: "text_delta", text: "\n" });
+      const toolRunning = reduceTranscript(idle, editStart);
+
+      const heights = [idle, streaming, lineDone, toolRunning].map((state) => dynamicLines(state).length);
+
+      expect(new Set(heights).size).toBe(1);
+    });
+
+    it("끝나지 않은 응답 줄이 실행 중 표시보다 먼저 보인다", () => {
+      let state = reduceTranscript(initialTranscript, editStart);
+      state = reduceTranscript(state, { type: "text_delta", text: "완성 줄\n진행 중" });
+
+      expect(dynamicLines(state).filter((line) => line.trim() !== "")).toEqual(["진행 중"]);
+    });
+
+    it("응답 줄이 없으면 실행 중인 도구를 보이고, 여럿이면 나머지 개수를 붙인다", () => {
+      let state = reduceTranscript(initialTranscript, editStart);
+      expect(dynamicLines(state).filter((line) => line.trim() !== "")).toEqual(["⏺ Edit(a.ts) 실행 중…"]);
+
+      state = reduceTranscript(state, { type: "tool_start", toolUseId: "t2", name: "Bash", summary: "ls", input: {} });
+      expect(dynamicLines(state).filter((line) => line.trim() !== "")).toEqual(["⏺ Edit(a.ts) 실행 중… 외 1개"]);
+    });
+
+    it("폭을 넘는 응답 줄은 끝부분만 한 줄로 보인다", () => {
+      const longLine = `${"가".repeat(200)}끝부분`;
+      const state = reduceTranscript(initialTranscript, { type: "text_delta", text: longLine });
+
+      const visible = dynamicLines(state).filter((line) => line.trim() !== "");
+
+      expect(visible).toHaveLength(1);
+      expect(visible[0]).toContain("끝부분");
+    });
   });
 
   it("tool_start 직후 도구 줄과 diff는 확정 영역에 있다", () => {
