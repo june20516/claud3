@@ -163,7 +163,7 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
 ### 3단계: Ink TUI (완료 2026-10-22)
 
 - 같은 `session`과 `UiEvent`를 쓰는 Ink 화면: 입력창, 스크롤되는 대화, 도구 실행 표시, 권한 요청 창, 하단 상태 줄
-- `--plain`으로 1·2단계 UI 유지 (stdin이 TTY가 아니면 자동으로 plain)
+- `--plain`으로 1·2단계 UI 유지 (stdin이나 stdout이 TTY가 아니면 자동으로 plain)
 - 할 수 있는 일은 plain 화면과 같다 (갱신 2026-10-22, 권한 모드 추가분 반영):
   - 상태 줄에 권한 모드를 포함하고, 모드가 바뀌면 바로 갱신한다.
   - Shift+Tab 모드 순환, `/mode`, 입력 기록(↑/↓, 파일 저장), 여러 줄 입력, Esc·Ctrl+C·Ctrl+D 동작이 같다.
@@ -174,6 +174,9 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
   - 대화 영역 컴포넌트는 `Transcript.tsx`가 아니라 `TranscriptView.tsx`다. macOS의 대소문자 무시 파일 시스템에서 상태 리듀서 `transcript.ts`와 이름이 충돌한다.
   - header는 별도 영역이 아니라 대화 흐름 안의 dim 줄로 표시한다.
   - `(중단됨)`은 dim으로 표시한다.
+  - 동적 영역을 작게 유지한다(최종 review 반영): 응답은 완성된 줄을 바로 확정(Static)하고 진행 중인 마지막 줄만 동적으로 그린다. 도구는 시작할 때 이름·요약·diff를 확정하고 동적 영역에는 실행 중 한 줄만 둔다. 오류로 끝나면 `  ⎿ 요약` 줄을 더한다. 터미널 높이를 넘겨 scrollback에 사본이 쌓이는 것을 막는다.
+  - 입력창은 한 번에 들어온 글자와 Enter(한글 IME 조합 중 Return)를 줄마다 제출한다. 붙여넣기(bracketed paste)는 줄바꿈째 입력창에 넣는다.
+  - 시작 잔액을 모르면 상태 줄에서 잔액만 빼고 보인다. Ctrl+D는 입력이 비어 있을 때만 종료한다.
 
 ## 7. 자기 개발 (self-hosting)
 
