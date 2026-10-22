@@ -8,7 +8,7 @@ import type { Session } from "../src/session.js";
 import type { PermissionDecision, PermissionRequest, UiEvent } from "../src/types.js";
 import type { UsageSnapshot } from "../src/usageStore.js";
 import { App, InkUiStore, connectSession } from "../src/ui/ink/App.js";
-import { InputBox } from "../src/ui/ink/InputBox.js";
+import { InputBox, inputCursorOffset } from "../src/ui/ink/InputBox.js";
 import { PermissionDialog } from "../src/ui/ink/PermissionDialog.js";
 import { StatusBar } from "../src/ui/ink/StatusBar.js";
 import { Transcript } from "../src/ui/ink/TranscriptView.js";
@@ -414,6 +414,38 @@ describe("InputBox", () => {
   });
 });
 
+describe("inputCursorOffset", () => {
+  it("빈 입력이면 프롬프트 바로 뒤", () => {
+    expect(inputCursorOffset({ collectedLines: [], textBeforeCursor: "", columns: 80 })).toEqual({ x: 2, y: 0 });
+  });
+
+  it("한글은 한 글자에 두 칸으로 센다", () => {
+    expect(inputCursorOffset({ collectedLines: [], textBeforeCursor: "안녕", columns: 80 })).toEqual({ x: 6, y: 0 });
+  });
+
+  it("이어 받은 줄 수만큼 아래로 내려가고 이어 받기 프롬프트 뒤에 둔다", () => {
+    expect(inputCursorOffset({ collectedLines: ["첫 줄", "둘째"], textBeforeCursor: "ab", columns: 80 })).toEqual({
+      x: 4,
+      y: 2,
+    });
+  });
+
+  it("터미널 폭을 넘으면 감긴 행으로 옮긴다", () => {
+    expect(inputCursorOffset({ collectedLines: [], textBeforeCursor: "abcdefghij", columns: 10 })).toEqual({ x: 2, y: 1 });
+  });
+
+  it("감긴 이어 받은 줄은 감긴 행 수만큼 센다", () => {
+    expect(inputCursorOffset({ collectedLines: ["가나다라마바"], textBeforeCursor: "", columns: 10 })).toEqual({
+      x: 2,
+      y: 2,
+    });
+  });
+
+  it("붙여넣은 줄바꿈 뒤에서는 프롬프트 없이 줄 첫 칸부터 센다", () => {
+    expect(inputCursorOffset({ collectedLines: [], textBeforeCursor: "ab\ncd", columns: 80 })).toEqual({ x: 2, y: 1 });
+  });
+});
+
 describe("StatusBar", () => {
   it("잔액을 모르면 잔액 부분만 뺀다", () => {
     const { lastFrame } = render(<StatusBar model="claude-test" permissionMode="plan" sessionCostUsd={0.0123} />);
@@ -708,5 +740,31 @@ describe("createInkUi", () => {
 
     await expect(running).resolves.toBeUndefined();
     expect(output()).toContain("세션 ID: s1");
+  });
+
+  it("터미널에서는 실제 커서를 입력창 커서 칸에 보여 한글 IME 조합 글자가 입력창에 뜬다", async () => {
+    // 화면은 빈 줄, "> 안녕", 상태 줄이다. 맨 아래에서 두 줄 올라가 "> 안녕"(폭 6) 다음 칸(7열)에 커서를 보인다.
+    const CURSOR_AFTER_INPUT = "\u001b[2A\u001b[7G\u001b[?25h";
+    const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => undefined });
+    const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 80, rows: 24 });
+    let written = "";
+    stdout.on("data", (chunk: Buffer) => {
+      written += chunk.toString();
+    });
+    const session = new FakeSession();
+    const ui = createInkUi({
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    const running = ui.run(session.asSession(), {
+      commandContext: { session: session.asSession(), readUsage: async () => SNAPSHOT },
+      recordUsage: async () => SNAPSHOT,
+    });
+    stdin.write("안녕");
+
+    await vi.waitFor(() => expect(written).toContain(CURSOR_AFTER_INPUT));
+    await session.close();
+    await running;
   });
 });

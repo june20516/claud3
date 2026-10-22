@@ -1,5 +1,6 @@
-import { Box, Text, useInput, usePaste } from "ink";
+import { Box, Text, useCursor, useInput, usePaste, useStdout } from "ink";
 import { useReducer, useRef } from "react";
+import stringWidth from "string-width";
 import { HISTORY_SIZE } from "../../inputHistory.js";
 import { MultilineBuffer } from "../plain.js";
 
@@ -17,6 +18,11 @@ export interface InputBoxProps {
   onHistoryChange?: (history: string[]) => void;
   /** 입력이 비어 있을 때 Ctrl+D. */
   onExit?: () => void;
+  /**
+   * Ink 동적 출력 맨 위에서 센 입력창 첫 행. 알면 터미널의 실제 커서를 커서 칸에 둔다.
+   * 한글 IME는 조합 중인 글자를 실제 커서 자리에 그리기 때문이다.
+   */
+  originRow?: number;
 }
 
 /** 입력 중인 줄. 전각 문자·이모지가 한 칸씩 움직이도록 코드 포인트 배열로 다룬다. */
@@ -61,6 +67,48 @@ function moveCursor(line: EditLine, cursor: number): EditLine {
   return { ...line, cursor: Math.min(Math.max(cursor, 0), line.chars.length) };
 }
 
+const DEFAULT_COLUMNS = 80;
+
+/** 터미널 폭. 터미널이 아닌 스트림(테스트 등)이면 기본값. */
+function columnsOf(stream: NodeJS.WritableStream): number {
+  return "columns" in stream && typeof stream.columns === "number" ? stream.columns : DEFAULT_COLUMNS;
+}
+
+function promptOf(lineIndex: number): string {
+  return lineIndex === 0 ? PROMPT : CONTINUATION_PROMPT;
+}
+
+/** 표시 폭이 width인 줄이 columns칸 터미널에서 차지하는 행 수. */
+function rowsOf(width: number, columns: number): number {
+  return Math.max(1, Math.ceil(width / columns));
+}
+
+/** 입력창 맨 위 행·첫 칸을 기준으로 한 커서 칸. 전각 문자 폭과 터미널 폭에서 감기는 행을 센다. */
+export function inputCursorOffset({
+  collectedLines,
+  textBeforeCursor,
+  columns,
+}: {
+  collectedLines: readonly string[];
+  textBeforeCursor: string;
+  columns: number;
+}): { x: number; y: number } {
+  const width = Math.max(columns, 1);
+  let row = 0;
+  collectedLines.forEach((collected, index) => {
+    row += rowsOf(stringWidth(promptOf(index) + collected), width);
+  });
+  // 붙여넣은 줄바꿈 뒤의 줄은 프롬프트 없이 첫 칸부터 그려진다.
+  const segments = textBeforeCursor.split("\n");
+  const prompt = promptOf(collectedLines.length);
+  const lastSegment = segments.pop() ?? "";
+  segments.forEach((segment, index) => {
+    row += rowsOf(stringWidth((index === 0 ? prompt : "") + segment), width);
+  });
+  const lastWidth = stringWidth((segments.length === 0 ? prompt : "") + lastSegment);
+  return { x: lastWidth % width, y: row + Math.floor(lastWidth / width) };
+}
+
 interface InputState {
   line: EditLine;
   /** 줄 끝 \\로 이어 받는 중인 앞 줄들(입력한 그대로). */
@@ -72,8 +120,18 @@ interface InputState {
 }
 
 /** 프롬프트 입력창. 줄 끝 \\ + Enter로 여러 줄을 이어 받고, ↑/↓로 입력 기록을 오간다. */
-export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHistoryChange, onExit }: InputBoxProps) {
+export function InputBox({
+  isActive,
+  initialHistory,
+  onSubmit,
+  onInterrupt,
+  onHistoryChange,
+  onExit,
+  originRow,
+}: InputBoxProps) {
   const multiline = useRef(new MultilineBuffer()).current;
+  const { setCursorPosition } = useCursor();
+  const { stdout } = useStdout();
   // Ink는 한 청크의 여러 키(Backspace 꾹 누름 등)를 렌더 없이 연달아 넘기므로,
   // 렌더 시점 값 대신 ref의 최신 상태를 읽고 바꾼 뒤 다시 그린다.
   const stateRef = useRef<InputState>({
@@ -204,6 +262,15 @@ export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHi
   const cursorChar = atCursor === undefined || atCursor === "\n" ? " " : atCursor;
   const rest = atCursor === "\n" ? `\n${after}` : after;
 
+  // 입력창 위치를 알면 실제 커서를 커서 칸에 두고, 모르면(첫 레이아웃 전·테스트) 반전 글자로 커서를 그린다.
+  const usesTerminalCursor = isActive && originRow !== undefined;
+  if (usesTerminalCursor) {
+    const offset = inputCursorOffset({ collectedLines, textBeforeCursor: before, columns: columnsOf(stdout) });
+    setCursorPosition({ x: offset.x, y: originRow + offset.y });
+  } else {
+    setCursorPosition(undefined);
+  }
+
   return (
     <Box flexDirection="column">
       {collectedLines.map((collected, index) => (
@@ -214,7 +281,7 @@ export function InputBox({ isActive, initialHistory, onSubmit, onInterrupt, onHi
       ))}
       <Text>
         <Text dimColor>{collectedLines.length === 0 ? PROMPT : CONTINUATION_PROMPT}</Text>
-        {isActive ? (
+        {isActive && !usesTerminalCursor ? (
           <>
             {before}
             <Text inverse>{cursorChar}</Text>

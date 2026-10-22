@@ -28,7 +28,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/ui/ink/App.tsx` | Ink 화면 조립: 이벤트 구독, 입력·권한 흐름 |
 | `src/ui/ink/transcript.ts` | `UiEvent` → 대화 상태 리듀서 (I/O 없음) |
 | `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기 |
-| `src/ui/ink/InputBox.tsx` | 입력창 (여러 줄, 기록) |
+| `src/ui/ink/InputBox.tsx` | 입력창 (여러 줄, 기록, 한글 IME를 위한 실제 커서 위치) |
 | `src/ui/ink/PermissionDialog.tsx` | 도구 권한·계획 승인 질문 |
 | `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 |
 | `src/main.ts` | 인자 처리와 조립. `--plain`이거나 stdin·stdout이 TTY가 아니면 plain 화면, 아니면 Ink 화면 |
