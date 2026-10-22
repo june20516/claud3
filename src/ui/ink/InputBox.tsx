@@ -3,6 +3,7 @@ import { useReducer, useRef } from "react";
 import stringWidth from "string-width";
 import { HISTORY_SIZE } from "../../inputHistory.js";
 import { MultilineBuffer } from "../plain.js";
+import { columnsOf } from "./terminalSize.js";
 
 const PROMPT = "> ";
 const CONTINUATION_PROMPT = "… ";
@@ -65,13 +66,6 @@ function deleteForward(line: EditLine): EditLine {
 
 function moveCursor(line: EditLine, cursor: number): EditLine {
   return { ...line, cursor: Math.min(Math.max(cursor, 0), line.chars.length) };
-}
-
-const DEFAULT_COLUMNS = 80;
-
-/** 터미널 폭. 터미널이 아닌 스트림(테스트 등)이면 기본값. */
-function columnsOf(stream: NodeJS.WritableStream): number {
-  return "columns" in stream && typeof stream.columns === "number" ? stream.columns : DEFAULT_COLUMNS;
 }
 
 function promptOf(lineIndex: number): string {

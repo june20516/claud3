@@ -1,10 +1,35 @@
 import { styleText } from "node:util";
 import { diffLines } from "diff";
+import stringWidth from "string-width";
 
 export const DIFF_MAX_LINES = 40;
 
 const INDENT = "    ";
 const CONTEXT_LINES = 2;
+
+// 256색 어두운 초록·빨강. 글자는 기본색으로 두어 어느 테마에서도 읽히게 한다.
+const ADDED_BACKGROUND = "\u001b[48;5;22m";
+const REMOVED_BACKGROUND = "\u001b[48;5;52m";
+const RESET_BACKGROUND = "\u001b[49m";
+
+export interface DiffFormatOptions {
+  /** 터미널 폭. 주면 바뀐 줄의 배경을 그 폭 끝까지 채운다. */
+  width?: number;
+}
+
+/** styleText가 색을 내보내는 환경인지. NO_COLOR이거나 터미널이 아닌 출력이면 false. */
+function colorsEnabled(): boolean {
+  return styleText("red", "x") !== "x";
+}
+
+/** 바뀐 줄에 배경을 깐다. lineWidth를 알면 공백으로 채워 배경을 줄 끝까지 이어 준다. */
+function withBackground(background: string, text: string, lineWidth: number | undefined): string {
+  if (!colorsEnabled()) {
+    return text;
+  }
+  const padding = lineWidth === undefined ? "" : " ".repeat(Math.max(0, lineWidth - stringWidth(text)));
+  return `${background}${text}${padding}${RESET_BACKGROUND}`;
+}
 
 function splitLines(text: string): string[] {
   const lines = text.split("\n");
@@ -14,12 +39,12 @@ function splitLines(text: string): string[] {
   return lines;
 }
 
-function removedLine(line: string): string {
-  return styleText("red", `- ${line}`);
+function removedLine(line: string, lineWidth: number | undefined): string {
+  return withBackground(REMOVED_BACKGROUND, `- ${line}`, lineWidth);
 }
 
-function addedLine(line: string): string {
-  return styleText("green", `+ ${line}`);
+function addedLine(line: string, lineWidth: number | undefined): string {
+  return withBackground(ADDED_BACKGROUND, `+ ${line}`, lineWidth);
 }
 
 function contextLine(line: string): string {
@@ -36,16 +61,16 @@ function trimContext(lines: string[], hasChangeBefore: boolean, hasChangeAfter: 
   return [...afterPreviousChange, ...beforeNextChange];
 }
 
-function formatEdit(oldString: string, newString: string, replaceAll: boolean): string[] {
+function formatEdit(oldString: string, newString: string, replaceAll: boolean, lineWidth: number | undefined): string[] {
   const parts = diffLines(oldString, newString);
   const output: string[] = replaceAll ? [styleText("dim", "(모든 위치 바꿈)")] : [];
 
   parts.forEach((part, index) => {
     const lines = splitLines(part.value);
     if (part.added) {
-      output.push(...lines.map(addedLine));
+      output.push(...lines.map((line) => addedLine(line, lineWidth)));
     } else if (part.removed) {
-      output.push(...lines.map(removedLine));
+      output.push(...lines.map((line) => removedLine(line, lineWidth)));
     } else {
       const trimmed = trimContext(lines, index > 0, index < parts.length - 1);
       output.push(...trimmed.map(contextLine));
@@ -62,7 +87,12 @@ function limitLines(lines: string[]): string[] {
 }
 
 /** Edit·Write 도구 입력을 색칠한 diff 문자열로 만든다. 대상이 아니면 undefined. */
-export function formatToolDiff(toolName: string, input: Record<string, unknown>): string | undefined {
+export function formatToolDiff(
+  toolName: string,
+  input: Record<string, unknown>,
+  options: DiffFormatOptions = {},
+): string | undefined {
+  const lineWidth = options.width === undefined ? undefined : options.width - INDENT.length;
   let lines: string[];
 
   if (toolName === "Edit") {
@@ -70,13 +100,13 @@ export function formatToolDiff(toolName: string, input: Record<string, unknown>)
     if (typeof oldString !== "string" || typeof newString !== "string") {
       return undefined;
     }
-    lines = formatEdit(oldString, newString, replaceAll === true);
+    lines = formatEdit(oldString, newString, replaceAll === true, lineWidth);
   } else if (toolName === "Write") {
     const { content } = input;
     if (typeof content !== "string") {
       return undefined;
     }
-    lines = splitLines(content).map(addedLine);
+    lines = splitLines(content).map((line) => addedLine(line, lineWidth));
   } else {
     return undefined;
   }

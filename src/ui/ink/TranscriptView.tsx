@@ -1,7 +1,8 @@
-import { Box, Static, Text } from "ink";
+import { Box, Static, Text, useStdout } from "ink";
 import { useMemo } from "react";
 import { formatToolDiff } from "../../diffView.js";
 import { renderMarkdownLine } from "../../markdown.js";
+import { columnsOf } from "./terminalSize.js";
 import type { NoticeItem, RunningTool, StreamingText, ToolItem, TranscriptItem, TranscriptState } from "./transcript.js";
 
 function UserView({ text }: { text: string }) {
@@ -14,7 +15,9 @@ function UserView({ text }: { text: string }) {
 }
 
 function ToolView({ item }: { item: ToolItem }) {
-  const diff = useMemo(() => formatToolDiff(item.name, item.input), [item.name, item.input]);
+  const { stdout } = useStdout();
+  const width = columnsOf(stdout);
+  const diff = useMemo(() => formatToolDiff(item.name, item.input, { width }), [item.name, item.input, width]);
   return (
     <Box flexDirection="column">
       <Text>

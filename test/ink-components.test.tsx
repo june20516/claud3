@@ -178,6 +178,25 @@ describe("Transcript", () => {
     });
   });
 
+  it("diff의 바뀐 줄은 배경이 터미널 폭 끝까지 깔린다", () => {
+    vi.stubEnv("FORCE_COLOR", "1");
+    vi.stubEnv("NO_COLOR", "");
+    const state = reduceTranscript(initialTranscript, {
+      type: "tool_start",
+      toolUseId: "t1",
+      name: "Edit",
+      summary: "a.ts",
+      input: { file_path: "a.ts", old_string: "old line", new_string: "new line" },
+    });
+
+    const { lastFrame, stdout } = render(<Transcript state={{ ...state, running: [] }} />);
+    const addedLine = (lastFrame() ?? "").split("\n").find((line) => line.includes("+ new line")) ?? "";
+    vi.unstubAllEnvs();
+
+    expect(addedLine).toContain("\u001b[48;5;22m");
+    expect(stripVTControlCharacters(addedLine)).toHaveLength(stdout.columns);
+  });
+
   it("tool_start 직후 도구 줄과 diff는 확정 영역에 있다", () => {
     const state = reduceTranscript(initialTranscript, {
       type: "tool_start",
