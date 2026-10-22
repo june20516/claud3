@@ -19,7 +19,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/session.ts` | `query()` 수명, 한 번에 한 턴씩 입력, 중단, 재연결, 모델 변경·목록, 세션 교체, 권한 위임, 권한 모드 반영·변경, plan 계획 승인. 화면을 모른다 |
 | `src/usageStore.ts` | `~/.config/claud3/usage.json`(`CLAUD3_CONFIG_DIR`로 변경)의 누적 비용·시작 잔액 읽기/쓰기 |
 | `src/commands.ts` | 슬래시 명령(`/cost`·`/model`·`/mode`·`/clear`·`/resume`·`/help`) 파싱·실행과 `HELP_TEXT` |
-| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 |
+| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 (추가·삭제 줄 배경색) |
 | `src/markdown.ts` | 스트리밍 텍스트를 줄 단위로 마크다운 스타일링 |
 | `src/inputHistory.ts` | 입력 기록 파일 읽기/저장 (화면 공용) |
 | `src/ui/runOptions.ts` | `UiRunOptions`, `ChatUi` 타입. 명령 출력(`print`)은 화면이 제공한다 |
@@ -30,7 +30,8 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기 |
 | `src/ui/ink/InputBox.tsx` | 입력창 (여러 줄, 기록, 한글 IME를 위한 실제 커서 위치) |
 | `src/ui/ink/PermissionDialog.tsx` | 도구 권한·계획 승인 질문 |
-| `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 |
+| `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 (폭 전체 배경 띠) |
+| `src/ui/ink/terminalSize.ts` | 터미널 폭 조회 (입력창 커서·diff 배경 폭) |
 | `src/main.ts` | 인자 처리와 조립. `--plain`이거나 stdin·stdout이 TTY가 아니면 plain 화면, 아니면 Ink 화면 |
 | `scripts/promote.sh`, `scripts/rollback.sh` | 안정판 승격·되돌리기 |
 
