@@ -1,7 +1,8 @@
-import { Box, Static, Text } from "ink";
+import { Box, Static, Text, useStdout } from "ink";
 import { useMemo } from "react";
 import { formatToolDiff } from "../../diffView.js";
 import { renderMarkdownLine } from "../../markdown.js";
+import { columnsOf } from "./terminalSize.js";
 import type { NoticeItem, RunningTool, StreamingText, ToolItem, TranscriptItem, TranscriptState } from "./transcript.js";
 
 function UserView({ text }: { text: string }) {
@@ -14,7 +15,9 @@ function UserView({ text }: { text: string }) {
 }
 
 function ToolView({ item }: { item: ToolItem }) {
-  const diff = useMemo(() => formatToolDiff(item.name, item.input), [item.name, item.input]);
+  const { stdout } = useStdout();
+  const width = columnsOf(stdout);
+  const diff = useMemo(() => formatToolDiff(item.name, item.input, { width }), [item.name, item.input, width]);
   return (
     <Box flexDirection="column">
       <Text>
@@ -51,26 +54,40 @@ function isAttached(item: TranscriptItem): boolean {
   return (item.kind === "assistant" || item.kind === "notice") && item.attached === true;
 }
 
-/** 실행 중 표시. 폭을 넘어도 한 줄을 지키도록 자른다. */
-function RunningToolView({ tool }: { tool: RunningTool }) {
+/** 실행 중 표시. 여럿이면 첫 도구와 나머지 개수만 보인다. */
+function RunningToolsView({ tools }: { tools: readonly RunningTool[] }) {
+  const [first] = tools;
+  const others = tools.length > 1 ? ` 외 ${tools.length - 1}개` : "";
   return (
     <Text dimColor wrap="truncate">
-      ⏺ {tool.name}({tool.summary}) 실행 중…
+      ⏺ {first?.name}({first?.summary}) 실행 중…{others}
     </Text>
   );
 }
 
-/** 아직 줄바꿈이 오지 않은 응답의 마지막 줄. */
+/** 아직 줄바꿈이 오지 않은 응답의 마지막 줄. 폭을 넘으면 방금 들어온 끝부분이 보이도록 앞을 자른다. */
 function PendingLineView({ stream }: { stream: StreamingText }) {
-  return <Text>{renderMarkdownLine(stream.pending, { inCodeBlock: stream.inCodeBlock })}</Text>;
+  return <Text wrap="truncate-start">{renderMarkdownLine(stream.pending, { inCodeBlock: stream.inCodeBlock })}</Text>;
+}
+
+/** 대화와 입력창 사이의 한 줄. 진행 중 응답 줄, 실행 중 도구, 빈 줄 순으로 하나만 보인다. */
+function ActivityLine({ state }: { state: TranscriptState }) {
+  const { streaming, running } = state;
+  if (streaming !== undefined && streaming.pending !== "") {
+    return <PendingLineView stream={streaming} />;
+  }
+  if (running.length > 0) {
+    return <RunningToolsView tools={running} />;
+  }
+  return <Text> </Text>;
 }
 
 /**
- * 확정 항목은 Static으로 한 번만 그리고, 실행 중 표시와 진행 중 응답의 마지막 줄만 다시 그린다.
- * 동적 영역이 터미널 높이를 넘으면 Ink가 매 프레임 전체를 다시 써서 scrollback에 사본이 쌓이므로 작게 유지한다.
+ * 확정 항목은 Static으로 한 번만 그리고, 그 아래 진행 표시 줄 하나만 다시 그린다.
+ * 진행 표시 줄은 늘 한 줄이라 응답이 나오는 동안에도 입력창과 상태 줄이 위아래로 움직이지 않는다.
+ * 동적 영역이 터미널 높이를 넘으면 Ink가 매 프레임 전체를 다시 써서 scrollback에 사본이 쌓이므로 이렇게 작게 유지한다.
  */
 export function Transcript({ state }: { state: TranscriptState }) {
-  const { streaming } = state;
   return (
     <>
       <Static items={state.done}>
@@ -80,18 +97,9 @@ export function Transcript({ state }: { state: TranscriptState }) {
           </Box>
         )}
       </Static>
-      {state.running.length === 0 ? null : (
-        <Box marginTop={1} flexDirection="column">
-          {state.running.map((tool) => (
-            <RunningToolView key={tool.toolUseId} tool={tool} />
-          ))}
-        </Box>
-      )}
-      {streaming === undefined || streaming.pending === "" ? null : (
-        <Box marginTop={streaming.started ? 0 : 1}>
-          <PendingLineView stream={streaming} />
-        </Box>
-      )}
+      <Box marginTop={1}>
+        <ActivityLine state={state} />
+      </Box>
     </>
   );
 }

@@ -1,4 +1,5 @@
-import { Box, useInput } from "ink";
+import { Box, useBoxMetrics, useInput } from "ink";
+import type { DOMElement } from "ink";
 import { useRef, useSyncExternalStore } from "react";
 import type { CommandContext } from "../../commands.js";
 import { parseInput, runCommand } from "../../commands.js";
@@ -167,6 +168,9 @@ export interface AppProps {
 export function App({ store, session, commandContext, initialHistory, saveHistory }: AppProps) {
   const { transcript, dialog, remainingCreditUsd: remaining } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const lastIdleInterruptAt = useRef(0);
+  // Static은 레이아웃 밖(absolute)이므로 입력창의 top이 곧 동적 출력 맨 위에서 센 행이다.
+  const inputBoxRef = useRef<DOMElement>(null);
+  const inputBoxMetrics = useBoxMetrics(inputBoxRef);
 
   const interruptTurn = (): void => {
     void session.interrupt();
@@ -236,8 +240,9 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
           />
         </Box>
       )}
-      <Box marginTop={1}>
+      <Box ref={inputBoxRef} marginTop={1}>
         <InputBox
+          originRow={inputBoxMetrics.hasMeasured ? inputBoxMetrics.top : undefined}
           isActive={dialog === undefined}
           initialHistory={initialHistory}
           onSubmit={submit}

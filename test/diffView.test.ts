@@ -1,6 +1,52 @@
 import { stripVTControlCharacters } from "node:util";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DIFF_MAX_LINES, formatToolDiff } from "../src/diffView.js";
+
+const ADDED_BACKGROUND = "\u001b[48;5;22m";
+const REMOVED_BACKGROUND = "\u001b[48;5;52m";
+
+describe("formatToolDiff 배경색", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function forceColor(): void {
+    vi.stubEnv("FORCE_COLOR", "1");
+    vi.stubEnv("NO_COLOR", "");
+  }
+
+  function rawLines(input: Record<string, unknown>, options?: { width?: number }): string[] {
+    return (formatToolDiff("Edit", input, options) ?? "").split("\n");
+  }
+
+  it("추가 줄은 어두운 초록, 삭제 줄은 어두운 빨강 배경이고 문맥 줄에는 배경이 없다", () => {
+    forceColor();
+    const [context, removed, added] = rawLines({ old_string: "same\nold", new_string: "same\nnew" });
+
+    expect(removed).toContain(REMOVED_BACKGROUND);
+    expect(added).toContain(ADDED_BACKGROUND);
+    expect(context).not.toContain(ADDED_BACKGROUND);
+    expect(context).not.toContain(REMOVED_BACKGROUND);
+  });
+
+  it("폭을 주면 바뀐 줄의 배경을 그 폭 끝까지 채운다", () => {
+    forceColor();
+    const lines = rawLines({ old_string: "old", new_string: "새 줄" }, { width: 20 }).map((line) =>
+      stripVTControlCharacters(line),
+    );
+
+    // "    + 새 줄"은 폭 11("새 줄"이 5칸)이므로 공백 9칸을 채운다.
+    expect(lines).toEqual([`    - old${" ".repeat(11)}`, `    + 새 줄${" ".repeat(9)}`]);
+  });
+
+  it("색을 쓰지 않는 환경에서는 배경도 폭 채우기도 하지 않는다", () => {
+    vi.stubEnv("NO_COLOR", "1");
+    vi.stubEnv("FORCE_COLOR", "0");
+    const lines = rawLines({ old_string: "old", new_string: "new" }, { width: 20 });
+
+    expect(lines).toEqual(["    - old", "    + new"]);
+  });
+});
 
 function plainLines(toolName: string, input: Record<string, unknown>): string[] | undefined {
   const result = formatToolDiff(toolName, input);

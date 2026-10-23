@@ -50,20 +50,27 @@ export class MultilineBuffer {
   }
 }
 
-export function formatStatusLine(params: {
+export interface StatusLineParams {
   model?: string;
   permissionMode?: PermissionMode;
   sessionCostUsd: number;
   /** 시작 잔액을 아직 모르면 없다. 잔액 부분만 빼고 그린다. */
   remainingCreditUsd?: number;
-}): string {
+}
+
+/** 스타일 없는 상태 줄 문구. 화면마다 다른 스타일을 입힌다. */
+export function statusLineText(params: StatusLineParams): string {
   const parts = [
     params.model ?? "기본 모델",
     ...(params.permissionMode === undefined ? [] : [params.permissionMode]),
     `세션 ${usd(params.sessionCostUsd)}`,
     ...(params.remainingCreditUsd === undefined ? [] : [`크레딧 잔여 추정 $${params.remainingCreditUsd.toFixed(2)}`]),
   ];
-  return styleText("dim", parts.join(" · "));
+  return parts.join(" · ");
+}
+
+export function formatStatusLine(params: StatusLineParams): string {
+  return styleText("dim", statusLineText(params));
 }
 
 function usd(amount: number): string {
