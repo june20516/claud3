@@ -22,6 +22,8 @@ afterAll(() => {
 
 const BACKGROUND = "\u001b[48;";
 const DIM = "\u001b[2m";
+// 밝은 회색 글자(#d0d0d0). 터미널 기본 글자색에 맡기면 밝은 테마에서 배경과 구분되지 않는다.
+const LIGHT_FOREGROUND = "\u001b[38;2;208;208;208m";
 
 describe("StatusBar 배경", () => {
   it("배경 띠가 터미널 폭 전체를 차지하고, 글자는 흐리게 하지 않는다", () => {
@@ -31,5 +33,11 @@ describe("StatusBar 배경", () => {
     expect(frame).toContain(BACKGROUND);
     expect(frame).not.toContain(DIM);
     expect(stringWidth(stripVTControlCharacters(frame))).toBe(stdout.columns);
+  });
+
+  it("글자색을 밝은 회색으로 명시해 터미널 테마와 관계없이 배경과 대비된다", () => {
+    const { lastFrame } = render(<StatusBar model="claude-test" sessionCostUsd={0} />);
+
+    expect(lastFrame() ?? "").toContain(LIGHT_FOREGROUND);
   });
 });

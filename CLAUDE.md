@@ -30,7 +30,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기 |
 | `src/ui/ink/InputBox.tsx` | 입력창 (여러 줄, 기록, 한글 IME를 위한 실제 커서 위치) |
 | `src/ui/ink/PermissionDialog.tsx` | 도구 권한·계획 승인 질문 |
-| `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 (폭 전체 배경 띠) |
+| `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 (폭 전체 배경 띠, 밝은 글자색 명시) |
 | `src/ui/ink/terminalSize.ts` | 터미널 폭 조회 (입력창 커서·diff 배경 폭) |
 | `src/main.ts` | 인자 처리와 조립. `--plain`이거나 stdin·stdout이 TTY가 아니면 plain 화면, 아니면 Ink 화면 |
 | `scripts/promote.sh`, `scripts/rollback.sh` | 안정판 승격·되돌리기 |
