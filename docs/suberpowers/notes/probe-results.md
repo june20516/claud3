@@ -27,3 +27,18 @@
 3. **B (A + `updatedPermissions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }]`)**: 승인 직후 `system:status`가 `acceptEdits`로 바뀌었고 다음 턴 init도 `acceptEdits`. `Edit`는 `canUseTool` 없이 실행되어 README가 실제로 수정되었다(probe 뒤 `git checkout`으로 복구). `setMode`가 의도대로 동작한다.
 4. **계획 파일**: Claude가 `~/.claude/plans/`에 계획 파일을 `Write`로 만든다(plan 모드에서는 `canUseTool` 호출 없이 통과). probe가 만든 파일 2개는 기록 후 삭제했다.
 5. **비용**: A 2턴 약 US$0.0065, B 2턴 약 US$0.0054. 합계 약 US$0.012.
+
+## 서브에이전트·백그라운드 작업 확인 (2026-10-26)
+
+`scripts/probe-tasks.ts`(삭제됨)로 `claude-haiku-5-5`에 백그라운드 Bash(`for i in 1 2 3 4 5; do echo tick $i; sleep 1; done`)와 general-purpose 서브에이전트(`echo sub-hello` 실행)를 시켰다(SDK 0.3.306, `settingSources: []`, `includePartialMessages`, `agentProgressSummaries`). 기록은 `test/fixtures/probe-tasks.json`(131개 메시지).
+
+1. **서브에이전트 메시지**: `assistant`·`user` 메시지가 `parent_tool_use_id`(= 메인의 `Agent` tool_use id)를 달고 메인 스트림에 온다. 서브에이전트의 `stream_event`(부분 메시지)는 오지 않았다. 지금 `events`는 `parent_tool_use_id`를 보지 않아 서브에이전트의 도구 호출(`tool_use`·`tool_result`)이 메인 대화의 도구 줄·실행 중 표시로 섞인다(응답 텍스트는 stream_event로만 보이므로 섞이지 않는다).
+2. **작업 이벤트**:
+   - `task_started`: `task_id`, `tool_use_id`(만든 tool_use), `description`, `task_type`(`local_bash`·`local_agent`), `is_backgrounded`, 서브에이전트면 `subagent_type`·`spawn_depth`·`prompt`.
+   - `task_progress`: 서브에이전트에서 `usage`(`total_tokens`·`tool_uses`·`duration_ms`), `last_tool_name`, 진행에 따라 바뀌는 `description`("Running Print sub-hello text").
+   - `task_updated`: `patch.status`(`completed` 등)·`end_time`.
+   - `task_notification`: `status`, `output_file`, `summary`, 서브에이전트면 `usage`.
+   - `background_tasks_changed`: 백그라운드 작업만 담은 전체 목록(전경 서브에이전트는 없음). 끝나면 `[]`.
+   - 짧은 서브에이전트라 `agentProgressSummaries`의 `summary`는 오지 않았다.
+3. **출력 파일**: 백그라운드 셸의 `output_file`은 실행 중에 계속 채워진다(셸이 끝나기 전 8.4초에 메인 모델이 `Read`로 tick 1~5를 읽음). 끝나면 `[exited with code 0]` 줄이 붙는다. 서브에이전트의 `output_file`은 `~/.claude/projects/<프로젝트>/<세션>/subagents/agent-<task_id>.jsonl`로 가는 심볼릭 링크다. 즉 `task_id`가 agentId이고 `getSubagentMessages(sessionId, task_id)`로 기록을 읽을 수 있다.
+4. **턴과 작업의 관계**: 백그라운드 셸은 턴이 끝난 뒤(`result` 이후)에도 이어서 돌았고, 끝나자 `task_updated`·`task_notification`·`background_tasks_changed []`가 다음 입력 전에 왔다.
