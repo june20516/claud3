@@ -72,9 +72,22 @@ function promptOf(lineIndex: number): string {
   return lineIndex === 0 ? PROMPT : CONTINUATION_PROMPT;
 }
 
-/** 표시 폭이 width인 줄이 columns칸 터미널에서 차지하는 행 수. */
-function rowsOf(width: number, columns: number): number {
-  return Math.max(1, Math.ceil(width / columns));
+/**
+ * 줄 하나를 columns칸에 글자 단위로 놓았을 때 차지하는 행 수와 마지막 행에서 글자가 끝나는 칸.
+ * 입력창은 wrap="hard"로 그리므로 Ink(wrap-ansi)와 같게, 넓은 글자가 남은 칸에 들어가지 않으면 다음 행으로 넘긴다.
+ */
+function layoutLine(text: string, columns: number): { rows: number; endColumn: number } {
+  let row = 0;
+  let column = 0;
+  for (const char of Array.from(text)) {
+    const width = stringWidth(char);
+    if (column + width > columns) {
+      row += 1;
+      column = 0;
+    }
+    column += width;
+  }
+  return { rows: row + 1, endColumn: column };
 }
 
 /** 입력창 맨 위 행·첫 칸을 기준으로 한 커서 칸. 전각 문자 폭과 터미널 폭에서 감기는 행을 센다. */
@@ -90,17 +103,21 @@ export function inputCursorOffset({
   const width = Math.max(columns, 1);
   let row = 0;
   collectedLines.forEach((collected, index) => {
-    row += rowsOf(stringWidth(promptOf(index) + collected), width);
+    row += layoutLine(promptOf(index) + collected, width).rows;
   });
   // 붙여넣은 줄바꿈 뒤의 줄은 프롬프트 없이 첫 칸부터 그려진다.
   const segments = textBeforeCursor.split("\n");
   const prompt = promptOf(collectedLines.length);
   const lastSegment = segments.pop() ?? "";
   segments.forEach((segment, index) => {
-    row += rowsOf(stringWidth((index === 0 ? prompt : "") + segment), width);
+    row += layoutLine((index === 0 ? prompt : "") + segment, width).rows;
   });
-  const lastWidth = stringWidth((segments.length === 0 ? prompt : "") + lastSegment);
-  return { x: lastWidth % width, y: row + Math.floor(lastWidth / width) };
+  const last = layoutLine((segments.length === 0 ? prompt : "") + lastSegment, width);
+  // 줄을 꽉 채웠으면 커서는 다음 행 첫 칸에 둔다.
+  if (last.endColumn >= width) {
+    return { x: 0, y: row + last.rows };
+  }
+  return { x: last.endColumn, y: row + last.rows - 1 };
 }
 
 interface InputState {
@@ -272,12 +289,13 @@ export function InputBox({
   return (
     <Box flexDirection="column">
       {collectedLines.map((collected, index) => (
-        <Text key={index}>
+        <Text key={index} wrap="hard">
           <Text dimColor>{index === 0 ? PROMPT : CONTINUATION_PROMPT}</Text>
           {collected}
         </Text>
       ))}
-      <Text>
+      {/* 단어가 아니라 글자 단위로 줄을 넘겨야 inputCursorOffset의 커서 칸과 맞는다. */}
+      <Text wrap="hard">
         <Text dimColor>{collectedLines.length === 0 ? PROMPT : CONTINUATION_PROMPT}</Text>
         {isActive && !usesTerminalCursor ? (
           <>

@@ -3,6 +3,7 @@ import { PassThrough } from "node:stream";
 import { stripVTControlCharacters } from "node:util";
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { render } from "ink-testing-library";
+import stringWidth from "string-width";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "../src/session.js";
 import type { PermissionDecision, PermissionRequest, UiEvent, UserQuestion } from "../src/types.js";
@@ -649,6 +650,20 @@ describe("InputBox", () => {
     expect(onInterrupt).not.toHaveBeenCalled();
   });
 
+  it("긴 입력은 단어가 아니라 글자 단위로 줄을 넘겨 커서 계산과 맞춘다", async () => {
+    const { stdin, frame } = renderInput();
+    // 테스트 화면 폭은 100칸. 단어 단위로 넘기면 첫 줄이 공백에서 끊겨 100칸을 채우지 못한다.
+    // "> "(2칸) + "가나다 라마 "(12칸)×8 = 98칸, 다음 "가"까지 100칸. 단어 단위면 "가나다"째 다음 줄로 간다.
+    const text = "가나다 라마 ".repeat(10);
+
+    await press(stdin, text);
+
+    const [firstRow = "", secondRow = ""] = frame().split("\n");
+    expect(stringWidth(firstRow)).toBe(100);
+    expect(firstRow.endsWith("라마 가")).toBe(true);
+    expect(secondRow.startsWith("나다 라마")).toBe(true);
+  });
+
   it("Shift+Enter는 제출하지 않고 줄을 바꾸며, Enter로 여러 줄을 한 번에 보낸다", async () => {
     const { stdin, onSubmit, onHistoryChange, frame } = renderInput();
 
@@ -706,6 +721,21 @@ describe("InputBox", () => {
 });
 
 describe("inputCursorOffset", () => {
+  it("넓은 글자가 줄 끝 남은 한 칸에 들어가지 않으면 다음 줄 첫 칸부터 센다", () => {
+    // "> a"(3칸) + 가×13(26칸) = 29칸. 14번째 가는 남은 1칸에 들어가지 않아 다음 줄로 넘어간다.
+    expect(inputCursorOffset({ collectedLines: [], textBeforeCursor: `a${"가".repeat(14)}`, columns: 30 })).toEqual({
+      x: 2,
+      y: 1,
+    });
+  });
+
+  it("줄을 꽉 채우면 다음 줄 첫 칸", () => {
+    expect(inputCursorOffset({ collectedLines: [], textBeforeCursor: "가".repeat(14), columns: 30 })).toEqual({
+      x: 0,
+      y: 1,
+    });
+  });
+
   it("빈 입력이면 프롬프트 바로 뒤", () => {
     expect(inputCursorOffset({ collectedLines: [], textBeforeCursor: "", columns: 80 })).toEqual({ x: 2, y: 0 });
   });
