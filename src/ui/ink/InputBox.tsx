@@ -113,7 +113,7 @@ interface InputState {
   draft: string;
 }
 
-/** 프롬프트 입력창. 줄 끝 \\ + Enter로 여러 줄을 이어 받고, ↑/↓로 입력 기록을 오간다. */
+/** 프롬프트 입력창. Shift+Enter·Option+Enter나 줄 끝 \\ + Enter로 여러 줄을 받고, ↑/↓로 입력 기록을 오간다. */
 export function InputBox({
   isActive,
   initialHistory,
@@ -206,6 +206,9 @@ export function InputBox({
         if (stateRef.current.line.chars.length === 0) {
           onExit?.();
         }
+      } else if (key.return && (key.shift || key.meta)) {
+        // Shift+Enter(kitty keyboard protocol)·Option+Enter는 제출하지 않고 줄을 바꾼다.
+        editLine((line) => insertText(line, "\n"));
       } else if (key.return) {
         submitLine();
       } else if (key.upArrow) {

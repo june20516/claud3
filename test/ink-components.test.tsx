@@ -29,6 +29,10 @@ const SHIFT_TAB = "\u001b[Z";
 const CTRL_C = "\u0003";
 const CTRL_D = "\u0004";
 const SPACE = " ";
+/** kitty keyboard protocol의 Shift+Enter. */
+const SHIFT_ENTER = "\u001b[13;2u";
+/** Option(Esc+)+Enter. */
+const META_ENTER = "\u001b\r";
 
 const SINGLE_QUESTION: UserQuestion = {
   question: "어떤 방식으로 할까요?",
@@ -645,6 +649,32 @@ describe("InputBox", () => {
     expect(onInterrupt).not.toHaveBeenCalled();
   });
 
+  it("Shift+Enter는 제출하지 않고 줄을 바꾸며, Enter로 여러 줄을 한 번에 보낸다", async () => {
+    const { stdin, onSubmit, onHistoryChange, frame } = renderInput();
+
+    await press(stdin, "첫 줄");
+    await press(stdin, SHIFT_ENTER);
+    await press(stdin, "둘째 줄");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(frame()).toContain("> 첫 줄\n둘째 줄");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("첫 줄\n둘째 줄");
+    // 기록 파일은 줄 단위라 여러 줄 입력은 기록하지 않는다.
+    expect(onHistoryChange).not.toHaveBeenCalled();
+  });
+
+  it("Option+Enter도 줄을 바꾼다", async () => {
+    const { stdin, onSubmit } = renderInput();
+
+    await press(stdin, "a");
+    await press(stdin, META_ENTER);
+    await press(stdin, "b");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("a\nb");
+  });
+
   it("여러 줄 입력이 아니면 Ctrl+C는 onInterrupt를 부른다", async () => {
     const { stdin, onInterrupt } = renderInput();
 
@@ -759,6 +789,19 @@ describe("App", () => {
 
     await vi.waitFor(() => expect(frame()).toContain("현재 모드: default"));
     expect(session.sent).toEqual(["안녕"]);
+  });
+
+  it("kitty keyboard protocol 형식의 Shift+Tab·Esc·Ctrl+C도 같은 동작을 한다", async () => {
+    const { stdin, session } = renderApp();
+    session.currentPermissionMode = "acceptEdits";
+    await press(stdin, "\u001b[9;2u");
+    expect(session.setPermissionMode).toHaveBeenCalledWith("plan");
+
+    session.isBusy = true;
+    await press(stdin, "\u001b[27u");
+    expect(session.interrupt).toHaveBeenCalledTimes(1);
+    await press(stdin, "\u001b[99;5u");
+    expect(session.interrupt).toHaveBeenCalledTimes(2);
   });
 
   it("Shift+Tab은 다음 권한 모드로 바꾼다", async () => {
@@ -1090,6 +1133,25 @@ describe("createInkUi", () => {
 
   afterEach(() => {
     Reflect.deleteProperty(console, "Console");
+  });
+
+  it("터미널에 kitty keyboard protocol 지원 여부를 묻는다 (Shift+Enter 구분용)", async () => {
+    const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => undefined });
+    const stdout = Object.assign(new PassThrough(), { columns: 80, rows: 24, isTTY: true });
+    let written = "";
+    stdout.on("data", (chunk: Buffer) => {
+      written += chunk.toString();
+    });
+    const session = new FakeSession();
+    const ui = createInkUi({ stdin: stdin as unknown as NodeJS.ReadStream, stdout: stdout as unknown as NodeJS.WriteStream });
+
+    const running = ui.run(session.asSession(), {
+      commandContext: { session: session.asSession(), readUsage: async () => SNAPSHOT },
+      recordUsage: async () => SNAPSHOT,
+    });
+    await vi.waitFor(() => expect(written).toContain("\u001b[?u"));
+    await session.close();
+    await running;
   });
 
   it("run은 session을 시작하고, session_closed가 오면 화면을 닫고 끝난다", async () => {

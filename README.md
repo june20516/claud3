@@ -57,6 +57,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | 키 | 설명 |
 |---|---|
 | Enter | 보내기. 줄 끝에 `\`를 붙이고 Enter를 누르면 여러 줄 입력 |
+| Shift+Enter | 줄바꿈 (Ink 화면, kitty keyboard protocol을 지원하는 터미널: iTerm2 등). Option+Enter도 같음(iTerm2에서 Option을 Esc+로 둔 경우) |
 | ↑/↓ | 이전 입력 |
 | Esc / Ctrl+C | 실행 중인 턴 중단. 권한 질문 중 Ctrl+C는 거부 |
 | Ctrl+C 두 번 | 종료 |

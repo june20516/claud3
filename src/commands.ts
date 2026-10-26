@@ -48,6 +48,7 @@ export const HELP_TEXT = [
   "  그 밖의 /…       플러그인 스킬 등으로 Claude에게 그대로 전달 (예: /suberpower:brainstorming)",
   "키",
   "  Enter            보내기 · 줄 끝에 \\ 를 붙이고 Enter: 여러 줄 입력",
+  "  Shift+Enter      줄바꿈 (Ink 화면, iTerm2 등 지원 터미널) · Option+Enter도 같음",
   "  ↑/↓              이전 입력",
   "  Esc / Ctrl+C     실행 중인 턴 중단 · 권한 질문 중 Ctrl+C는 거부",
   "  Ctrl+C 두 번     종료 · Ctrl+D 종료",
