@@ -149,6 +149,8 @@ export function formatEvent(event: UiEvent, { width }: FormatEventOptions = {}):
       return `\n${styleText("dim", HISTORY_HEADER)}\n${event.lines.join("\n")}\n`;
     case "text_delta":
       return event.text;
+    case "token_usage":
+      return "";
     case "tool_start": {
       const diff = formatToolDiff(event.name, event.input, { width });
       const summary = formatDiffSummary(event.name, event.input);
@@ -391,6 +393,10 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
       const renderEvent = async (event: UiEvent): Promise<void> => {
         if (event.type === "text_delta") {
           write(markdown.push(event.text));
+          return;
+        }
+        // 응답 조각마다 오므로 마크다운 줄을 끊지 않도록 flush하지 않는다. plain은 토큰 진행을 그리지 않는다.
+        if (event.type === "token_usage") {
           return;
         }
         write(markdown.flush());

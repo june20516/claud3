@@ -80,7 +80,68 @@ describe("createEventMapper", () => {
       sdkMessage({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } } }),
       sdkMessage({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } }),
     ]);
-    expect(events).toEqual([{ type: "text_delta", text: "hi" }]);
+    expect(events.filter((event) => event.type !== "token_usage")).toEqual([{ type: "text_delta", text: "hi" }]);
+  });
+
+  describe("token_usage", () => {
+    const streamEvent = (event: Record<string, unknown>) => sdkMessage({ type: "stream_event", event });
+    const messageStart = (input: number, cacheRead = 0, cacheCreation = 0) =>
+      streamEvent({
+        type: "message_start",
+        message: {
+          usage: {
+            input_tokens: input,
+            cache_read_input_tokens: cacheRead,
+            cache_creation_input_tokens: cacheCreation,
+            output_tokens: 1,
+          },
+        },
+      });
+    const textDelta = (text: string) =>
+      streamEvent({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } });
+    const messageDelta = (output: number) => streamEvent({ type: "message_delta", delta: {}, usage: { output_tokens: output } });
+    const usages = (events: UiEvent[]) => events.filter((event) => event.type === "token_usage");
+
+    it("message_start의 입력 토큰(캐시 포함)을 보낸 토큰으로 알린다", () => {
+      expect(usages(mapAll([messageStart(100, 2000, 300)]))).toEqual([
+        { type: "token_usage", inputTokens: 2400, outputTokens: 0 },
+      ]);
+    });
+
+    it("응답 조각이 오는 동안 받은 토큰을 글자 수로 추정해 늘리고, message_delta가 오면 정확한 값으로 바꾼다", () => {
+      const events = mapAll([messageStart(10), textDelta("a".repeat(8)), textDelta("b".repeat(4)), messageDelta(5)]);
+
+      expect(usages(events).map((event) => event.outputTokens)).toEqual([0, 2, 3, 5]);
+    });
+
+    it("도구 입력·생각 조각도 받은 토큰으로 센다", () => {
+      const events = mapAll([
+        messageStart(10),
+        streamEvent({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "x".repeat(8) } }),
+        streamEvent({ type: "content_block_delta", index: 1, delta: { type: "thinking_delta", thinking: "y".repeat(4) } }),
+      ]);
+
+      expect(usages(events).map((event) => event.outputTokens)).toEqual([0, 2, 3]);
+    });
+
+    it("한 턴의 여러 API 호출은 더하고, 턴이 끝나면 0부터 다시 센다", () => {
+      const events = mapAll([
+        messageStart(100),
+        messageDelta(20),
+        messageStart(150),
+        messageDelta(30),
+        resultMessage(0.01),
+        messageStart(70),
+      ]);
+
+      expect(usages(events)).toEqual([
+        { type: "token_usage", inputTokens: 100, outputTokens: 0 },
+        { type: "token_usage", inputTokens: 100, outputTokens: 20 },
+        { type: "token_usage", inputTokens: 250, outputTokens: 20 },
+        { type: "token_usage", inputTokens: 250, outputTokens: 50 },
+        { type: "token_usage", inputTokens: 70, outputTokens: 0 },
+      ]);
+    });
   });
 
   it("assistant의 tool_use → tool_start(name, summary, input)", () => {

@@ -5,6 +5,8 @@ export type UiEvent =
   /** resume한 세션의 이전 대화. 화면에 그릴 줄들(응답은 마크다운 스타일 적용). */
   | { type: "history"; lines: string[] }
   | { type: "text_delta"; text: string }
+  /** 이번 턴에 보낸(입력, 캐시 포함)·받은(출력, 받는 중이면 추정) 토큰 누계. */
+  | { type: "token_usage"; inputTokens: number; outputTokens: number }
   | { type: "tool_start"; toolUseId: string; name: string; summary: string; input: Record<string, unknown> }
   | { type: "tool_end"; toolUseId: string; isError: boolean; summary: string }
   | { type: "turn_result"; costUsd: number; totalCostUsd: number; isError: boolean; errorMessage?: string }

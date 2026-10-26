@@ -1,10 +1,18 @@
 import { Box, Static, Text, useStdout } from "ink";
-import { useMemo } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import { formatDiffSummary, formatToolDiff } from "../../diffView.js";
 import { renderMarkdownLine } from "../../markdown.js";
 import { HISTORY_HEADER } from "../plain.js";
 import { columnsOf } from "./terminalSize.js";
-import type { NoticeItem, RunningTool, StreamingText, ToolItem, TranscriptItem, TranscriptState } from "./transcript.js";
+import type {
+  NoticeItem,
+  RunningTool,
+  StreamingText,
+  ToolItem,
+  TranscriptItem,
+  TranscriptState,
+  TurnProgress,
+} from "./transcript.js";
 
 function UserView({ text }: { text: string }) {
   return (
@@ -86,9 +94,55 @@ function PendingLineView({ stream }: { stream: StreamingText }) {
   return <Text wrap="truncate-start">{renderMarkdownLine(stream.pending, { inCodeBlock: stream.inCodeBlock })}</Text>;
 }
 
-/** 대화와 입력창 사이의 한 줄. 진행 중 응답 줄, 실행 중 도구, 빈 줄 순으로 하나만 보인다. */
+const SPINNER_FRAMES = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"] as const;
+const SPINNER_INTERVAL_MS = 120;
+// Claude Code의 대기 표시처럼 따뜻한 주황으로 문구를 대화와 구분한다.
+const WAITING_COLOR = "#d7875f";
+
+/** 1000 미만은 그대로, 10만 미만은 소수 한 자리 k, 그 이상은 k. */
+export function formatTokenCount(count: number): string {
+  if (count < 1_000) {
+    return String(count);
+  }
+  return count < 100_000 ? `${(count / 1_000).toFixed(1)}k` : `${Math.round(count / 1_000)}k`;
+}
+
+/**
+ * 응답을 기다리는 동안의 한 줄: 도는 기호와 문구(실행 중 도구가 있으면 도구), 경과 시간, 보낸·받은 토큰.
+ * 기호와 경과 시간을 갱신하려고 스스로 주기적으로 다시 그린다.
+ */
+function WaitingLine({ turn, running }: { turn: TurnProgress; running: readonly RunningTool[] }) {
+  const [, tick] = useReducer((count: number) => count + 1, 0);
+  useEffect(() => {
+    const timer = setInterval(tick, SPINNER_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const elapsedMs = Math.max(Date.now() - turn.startedAt, 0);
+  const spinner = SPINNER_FRAMES[Math.floor(elapsedMs / SPINNER_INTERVAL_MS) % SPINNER_FRAMES.length];
+  const [tool] = running;
+  const others = running.length > 1 ? ` 외 ${running.length - 1}개` : "";
+  const label = tool === undefined ? `${turn.verb}…` : `${tool.name}(${tool.summary}) 실행 중…${others}`;
+  const details =
+    `${Math.floor(elapsedMs / 1_000)}초 · ↑ ${formatTokenCount(turn.inputTokens)} · ` +
+    `↓ ${formatTokenCount(turn.outputTokens)} 토큰 · Esc 중단`;
+  return (
+    <Text wrap="truncate">
+      <Text color={WAITING_COLOR}>{`${spinner} ${label}`}</Text>
+      <Text dimColor>{` (${details})`}</Text>
+    </Text>
+  );
+}
+
+/**
+ * 대화와 입력창 사이의 한 줄. 턴 중에는 응답 대기 표시, 아니면 진행 중 응답 줄, 실행 중 도구, 빈 줄 순으로 하나만 보인다.
+ * 턴 중의 줄바꿈 전 응답 조각은 따로 보이지 않고 줄이 완성되면 대화 영역에 나온다(받는 토큰으로 진행이 보인다).
+ */
 function ActivityLine({ state }: { state: TranscriptState }) {
-  const { streaming, running } = state;
+  const { streaming, running, turn } = state;
+  if (turn !== undefined) {
+    return <WaitingLine turn={turn} running={running} />;
+  }
   if (streaming !== undefined && streaming.pending !== "") {
     return <PendingLineView stream={streaming} />;
   }

@@ -102,6 +102,10 @@ describe("formatEvent", () => {
     expect(plainText.indexOf("+ new")).toBeLessThan(plainText.indexOf("⎿ a.ts · 1줄 삭제, 1줄 추가"));
   });
 
+  it("token_usage는 아무것도 그리지 않는다", () => {
+    expect(formatEvent({ type: "token_usage", inputTokens: 1, outputTokens: 1 })).toBe("");
+  });
+
   it("permission_mode는 '권한 모드: <설명>' 한 줄", () => {
     expect(stripVTControlCharacters(formatEvent({ type: "permission_mode", mode: "plan" }))).toBe(
       "\n권한 모드: plan — 계획만 세우고 도구 실행 안 함\n",
@@ -573,6 +577,19 @@ describe("createPlainUi 상태 줄 위치", () => {
 
     await vi.waitFor(() => expect(plain()).toContain("claude-test · 세션"));
     expect(plain()).not.toContain("git 없음");
+  });
+});
+
+describe("createPlainUi token_usage", () => {
+  it("응답 조각 사이의 token_usage는 마크다운 줄을 끊지 않는다", async () => {
+    const { plain, session } = createRunUi();
+
+    session.emit({ type: "text_delta", text: "**굵" });
+    session.emit({ type: "token_usage", inputTokens: 10, outputTokens: 1 });
+    session.emit({ type: "text_delta", text: "게**\n" });
+
+    await vi.waitFor(() => expect(plain()).toContain("굵게\n"));
+    expect(plain()).not.toContain("**");
   });
 });
 
