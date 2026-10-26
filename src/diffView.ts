@@ -7,10 +7,12 @@ export const DIFF_MAX_LINES = 40;
 const INDENT = "    ";
 const CONTEXT_LINES = 2;
 
-// 256색 어두운 초록·빨강. 글자는 기본색으로 두어 어느 테마에서도 읽히게 한다.
+// 256색 어두운 초록·빨강 배경에 밝은 글자(255). 글자를 기본색에 맡기면 밝은 테마에서 검은 글자가 배경에 묻힌다.
 const ADDED_BACKGROUND = "\u001b[48;5;22m";
 const REMOVED_BACKGROUND = "\u001b[48;5;52m";
+const LIGHT_FOREGROUND = "\u001b[38;5;255m";
 const RESET_BACKGROUND = "\u001b[49m";
+const RESET_FOREGROUND = "\u001b[39m";
 
 export interface DiffFormatOptions {
   /** 터미널 폭. 주면 바뀐 줄의 배경을 그 폭 끝까지 채운다. */
@@ -22,13 +24,13 @@ function colorsEnabled(): boolean {
   return styleText("red", "x") !== "x";
 }
 
-/** 바뀐 줄에 배경을 깐다. lineWidth를 알면 공백으로 채워 배경을 줄 끝까지 이어 준다. */
+/** 바뀐 줄에 배경과 밝은 글자색을 입힌다. lineWidth를 알면 공백으로 채워 배경을 줄 끝까지 이어 준다. */
 function withBackground(background: string, text: string, lineWidth: number | undefined): string {
   if (!colorsEnabled()) {
     return text;
   }
   const padding = lineWidth === undefined ? "" : " ".repeat(Math.max(0, lineWidth - stringWidth(text)));
-  return `${background}${text}${padding}${RESET_BACKGROUND}`;
+  return `${background}${LIGHT_FOREGROUND}${text}${padding}${RESET_BACKGROUND}${RESET_FOREGROUND}`;
 }
 
 function splitLines(text: string): string[] {

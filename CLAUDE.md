@@ -18,22 +18,24 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/permissionModes.ts` | 권한 모드 목록·순환·파싱과 설명 문구 |
 | `src/session.ts` | `query()` 수명, 한 번에 한 턴씩 입력, 중단, 재연결, 모델 변경·목록, 세션 교체, 권한 위임, 권한 모드 반영·변경, plan 계획 승인, resume 시 이전 대화 불러오기(`history` 이벤트), AskUserQuestion 답 위임(`askUser`). 화면을 모른다 |
 | `src/userQuestions.ts` | AskUserQuestion 입력 검증, 답(번호·직접 입력) 해석, 질문·답 요약 문구 |
+| `src/sessionList.ts` | `listSessions`로 프로젝트 세션 목록(최신순, 제목·마지막 대화 시간) 읽기와 시간 문구 |
 | `src/sessionHistory.ts` | SDK 세션 기록 → 화면 줄(마지막 100줄) 변환과 `getSessionMessages` 읽기 |
 | `src/usageStore.ts` | `~/.config/claud3/usage.json`(`CLAUD3_CONFIG_DIR`로 변경)의 누적 비용·시작 잔액 읽기/쓰기 |
 | `src/userConfig.ts` | `~/.config/claud3/config.json`의 claud3 전용 설정(기본 권한 모드) 읽기와 우선순위 |
-| `src/commands.ts` | 슬래시 명령(`/cost`·`/model`·`/mode`·`/clear`·`/resume`·`/help`) 파싱·실행과 `HELP_TEXT` |
-| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 (추가·삭제 줄 배경색) |
+| `src/commands.ts` | 슬래시 명령(`/cost`·`/model`·`/mode`·`/clear`·`/resume`·`/help`) 파싱·실행과 `HELP_TEXT`. 인자 없는 `/resume`은 화면의 `pickSession`으로 고른다 |
+| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 (추가·삭제 줄 어두운 배경 + 밝은 글자색) |
 | `src/markdown.ts` | 스트리밍 텍스트를 줄 단위로 마크다운 스타일링 |
-| `src/inputHistory.ts` | 입력 기록 파일 읽기/저장 (화면 공용) |
-| `src/ui/runOptions.ts` | `UiRunOptions`, `ChatUi` 타입(`prompter`·`asker`). 명령 출력(`print`)은 화면이 제공한다 |
+| `src/inputHistory.ts` | 입력 기록 파일 읽기/저장 (화면 공용, 한 줄에 JSON 문자열 하나라 여러 줄 입력도 저장, 예전 형식 줄도 읽음) |
+| `src/ui/runOptions.ts` | `UiRunOptions`(`startupCommand` 포함), `ChatUi` 타입(`prompter`·`asker`). 명령 출력(`print`)과 세션 고르기(`pickSession`)는 화면이 제공한다 |
 | `src/ui/plain.ts` | readline 화면(`--plain`, TTY가 아닐 때), 상태 줄(권한 모드 포함), 여러 줄 입력, 입력 기록, 권한 질문, 계획 승인 질문, Shift+Tab 모드 순환. 로직 없이 이벤트를 그리기만 한다 |
 | `src/ui/ink/index.tsx` | `createInkUi` — Ink 화면 생성·실행 (기본 화면) |
 | `src/ui/ink/App.tsx` | Ink 화면 조립: 이벤트 구독, 입력·권한 흐름 |
 | `src/ui/ink/transcript.ts` | `UiEvent` → 대화 상태 리듀서 (I/O 없음) |
 | `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기 |
-| `src/ui/ink/InputBox.tsx` | 입력창 (여러 줄, 기록, 한글 IME를 위한 실제 커서 위치) |
+| `src/ui/ink/InputBox.tsx` | 입력창 (Shift+Enter·`\` 여러 줄, 기록, 한글 IME를 위한 실제 커서 위치) |
 | `src/ui/ink/PermissionDialog.tsx` | 도구 권한·계획 승인 질문 |
 | `src/ui/ink/QuestionDialog.tsx` | AskUserQuestion 질문 창 (선택지, 복수 체크, 직접 입력은 입력창으로) |
+| `src/ui/ink/SessionPicker.tsx` | `/resume` 세션 목록 창 (최신순, 제목·시간, 스크롤) |
 | `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 (폭 전체 배경 띠, 밝은 글자색 명시) |
 | `src/ui/ink/terminalSize.ts` | 터미널 폭 조회 (입력창 커서·diff 배경 폭) |
 | `src/main.ts` | 인자 처리와 조립. `--plain`이거나 stdin·stdout이 TTY가 아니면 plain 화면, 아니면 Ink 화면 |

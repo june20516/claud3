@@ -11,6 +11,8 @@ import { App, InkUiStore, connectSession } from "../src/ui/ink/App.js";
 import { InputBox, inputCursorOffset } from "../src/ui/ink/InputBox.js";
 import { PermissionDialog } from "../src/ui/ink/PermissionDialog.js";
 import { QuestionDialog } from "../src/ui/ink/QuestionDialog.js";
+import { SessionPicker } from "../src/ui/ink/SessionPicker.js";
+import type { SessionListItem } from "../src/sessionList.js";
 import { StatusBar } from "../src/ui/ink/StatusBar.js";
 import { Transcript } from "../src/ui/ink/TranscriptView.js";
 import { createInkUi } from "../src/ui/ink/index.js";
@@ -27,6 +29,10 @@ const SHIFT_TAB = "\u001b[Z";
 const CTRL_C = "\u0003";
 const CTRL_D = "\u0004";
 const SPACE = " ";
+/** kitty keyboard protocol의 Shift+Enter. */
+const SHIFT_ENTER = "\u001b[13;2u";
+/** Option(Esc+)+Enter. */
+const META_ENTER = "\u001b\r";
 
 const SINGLE_QUESTION: UserQuestion = {
   question: "어떤 방식으로 할까요?",
@@ -77,7 +83,7 @@ class FakeSession {
   });
   readonly setModel = vi.fn(async () => undefined);
   readonly listModels = vi.fn(async () => []);
-  readonly replace = vi.fn(async () => undefined);
+  readonly replace = vi.fn(async (_resume?: string) => undefined);
 
   onEvent(listener: (event: UiEvent) => void): void {
     this.listeners.push(listener);
@@ -101,19 +107,34 @@ class FakeSession {
 const SNAPSHOT: UsageSnapshot = { startingCreditUsd: 100, spentUsd: 0.5 };
 
 function renderApp(
-  overrides: { recordUsage?: UiRunOptions["recordUsage"]; readUsage?: UiRunOptions["commandContext"]["readUsage"] } = {},
+  overrides: {
+    recordUsage?: UiRunOptions["recordUsage"];
+    readUsage?: UiRunOptions["commandContext"]["readUsage"];
+    listSessions?: UiRunOptions["commandContext"]["listSessions"];
+    startupCommand?: string;
+  } = {},
 ) {
   const session = new FakeSession();
   const store = new InkUiStore();
   const recordUsage = overrides.recordUsage ?? vi.fn(async (_costUsd: number) => SNAPSHOT);
   const options: UiRunOptions = {
-    commandContext: { session: session.asSession(), readUsage: overrides.readUsage ?? (async () => SNAPSHOT) },
+    commandContext: {
+      session: session.asSession(),
+      readUsage: overrides.readUsage ?? (async () => SNAPSHOT),
+      ...(overrides.listSessions === undefined ? {} : { listSessions: overrides.listSessions }),
+    },
     recordUsage,
   };
   const onClosed = vi.fn();
   connectSession(store, session.asSession(), options, onClosed);
   const view = render(
-    <App store={store} session={session.asSession()} commandContext={options.commandContext} initialHistory={[]} />,
+    <App
+      store={store}
+      session={session.asSession()}
+      commandContext={options.commandContext}
+      initialHistory={[]}
+      {...(overrides.startupCommand === undefined ? {} : { startupCommand: overrides.startupCommand })}
+    />,
   );
   const frame = (): string => plainFrame(view.lastFrame);
   return { ...view, session, store, recordUsage, onClosed, frame };
@@ -343,6 +364,56 @@ describe("QuestionDialog", () => {
     expect(onAnswer).not.toHaveBeenCalled();
     expect(onStopTyping).toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+function sessionItems(count: number): SessionListItem[] {
+  const now = Date.now();
+  return Array.from({ length: count }, (_, index) => ({
+    sessionId: `id-${index + 1}`,
+    title: `작업 ${index + 1}`,
+    lastModified: now - (index + 1) * 3_600_000,
+  }));
+}
+
+describe("SessionPicker", () => {
+  function renderPicker(items: SessionListItem[]) {
+    const onPick = vi.fn((_sessionId: string) => undefined);
+    const onCancel = vi.fn();
+    const view = render(<SessionPicker items={items} onPick={onPick} onCancel={onCancel} />);
+    return { ...view, onPick, onCancel, frame: () => plainFrame(view.lastFrame) };
+  }
+
+  it("제목 아래에 마지막 대화 시간을 보이고 첫 항목을 고른 상태로 시작한다", () => {
+    const text = renderPicker(sessionItems(2)).frame();
+
+    expect(text).toContain("이어서 열 세션 (최신순) 1/2");
+    expect(text).toMatch(/❯ 작업 1 [^\n]*\n[^\n]* \d+\/\d{2} \d{2}:\d{2} · 1시간 전/);
+    expect(text).toMatch(/ {2}작업 2 [^\n]*\n[^\n]* · 2시간 전/);
+  });
+
+  it("↓·Enter는 고른 세션 ID를, Esc는 취소를 알린다", async () => {
+    const pick = renderPicker(sessionItems(3));
+    await press(pick.stdin, DOWN);
+    await press(pick.stdin, ENTER);
+    expect(pick.onPick).toHaveBeenCalledWith("id-2");
+
+    const cancel = renderPicker(sessionItems(3));
+    await press(cancel.stdin, ESCAPE);
+    expect(cancel.onCancel).toHaveBeenCalled();
+  });
+
+  it("목록이 길면 고른 항목이 보이도록 창을 옮긴다", async () => {
+    const { stdin, frame } = renderPicker(sessionItems(20));
+    expect(frame()).not.toContain("작업 15");
+
+    for (let step = 0; step < 14; step++) {
+      await press(stdin, DOWN);
+    }
+
+    expect(frame()).toContain("❯ 작업 15");
+    expect(frame()).toContain("15/20");
+    expect(frame()).not.toMatch(/작업 1 /);
   });
 });
 
@@ -578,6 +649,53 @@ describe("InputBox", () => {
     expect(onInterrupt).not.toHaveBeenCalled();
   });
 
+  it("Shift+Enter는 제출하지 않고 줄을 바꾸며, Enter로 여러 줄을 한 번에 보낸다", async () => {
+    const { stdin, onSubmit, onHistoryChange, frame } = renderInput();
+
+    await press(stdin, "첫 줄");
+    await press(stdin, SHIFT_ENTER);
+    await press(stdin, "둘째 줄");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(frame()).toContain("> 첫 줄\n둘째 줄");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("첫 줄\n둘째 줄");
+    expect(onHistoryChange).toHaveBeenLastCalledWith(["첫 줄\n둘째 줄"]);
+  });
+
+  it("여러 줄 입력도 ↑로 다시 불러와 그대로 보낼 수 있다", async () => {
+    const { stdin, onSubmit, frame } = renderInput(["a\nb"]);
+
+    await press(stdin, UP);
+    expect(frame()).toContain("> a\nb");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("a\nb");
+  });
+
+  it("줄 끝 \\로 이어 받은 입력은 줄마다가 아니라 완성된 입력 하나로 기록한다", async () => {
+    const { stdin, onHistoryChange } = renderInput();
+
+    await press(stdin, "a\\");
+    await press(stdin, ENTER);
+    await press(stdin, "b");
+    await press(stdin, ENTER);
+
+    expect(onHistoryChange).toHaveBeenCalledTimes(1);
+    expect(onHistoryChange).toHaveBeenLastCalledWith(["a\nb"]);
+  });
+
+  it("Option+Enter도 줄을 바꾼다", async () => {
+    const { stdin, onSubmit } = renderInput();
+
+    await press(stdin, "a");
+    await press(stdin, META_ENTER);
+    await press(stdin, "b");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("a\nb");
+  });
+
   it("여러 줄 입력이 아니면 Ctrl+C는 onInterrupt를 부른다", async () => {
     const { stdin, onInterrupt } = renderInput();
 
@@ -694,6 +812,19 @@ describe("App", () => {
     expect(session.sent).toEqual(["안녕"]);
   });
 
+  it("kitty keyboard protocol 형식의 Shift+Tab·Esc·Ctrl+C도 같은 동작을 한다", async () => {
+    const { stdin, session } = renderApp();
+    session.currentPermissionMode = "acceptEdits";
+    await press(stdin, "\u001b[9;2u");
+    expect(session.setPermissionMode).toHaveBeenCalledWith("plan");
+
+    session.isBusy = true;
+    await press(stdin, "\u001b[27u");
+    expect(session.interrupt).toHaveBeenCalledTimes(1);
+    await press(stdin, "\u001b[99;5u");
+    expect(session.interrupt).toHaveBeenCalledTimes(2);
+  });
+
   it("Shift+Tab은 다음 권한 모드로 바꾼다", async () => {
     const { stdin, session } = renderApp();
     session.currentPermissionMode = "acceptEdits";
@@ -720,6 +851,43 @@ describe("App", () => {
     await press(stdin, SHIFT_TAB);
 
     expect(session.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  describe("세션 고르기", () => {
+    it("/resume은 목록 창을 띄우고 고른 세션으로 이동한다", async () => {
+      const { stdin, store, session, frame } = renderApp({ listSessions: async () => sessionItems(3) });
+
+      await press(stdin, "/resume");
+      await press(stdin, ENTER);
+      await vi.waitFor(() => expect(frame()).toContain("이어서 열 세션"));
+      await press(stdin, DOWN);
+      await press(stdin, ENTER);
+
+      await vi.waitFor(() => expect(session.replace).toHaveBeenCalledWith("id-2"));
+      expect(store.getSnapshot().picker).toBeUndefined();
+      expect(session.sent).toEqual([]);
+    });
+
+    it("startupCommand가 있으면 시작하자마자 실행하고, Esc는 취소한다", async () => {
+      const { stdin, session, frame } = renderApp({ listSessions: async () => sessionItems(2), startupCommand: "/resume" });
+
+      await vi.waitFor(() => expect(frame()).toContain("이어서 열 세션"));
+      await press(stdin, ESCAPE);
+
+      await vi.waitFor(() => expect(frame()).toContain("세션 선택을 취소했습니다"));
+      expect(session.replace).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+C는 목록 창을 닫는다", async () => {
+      const { stdin, store } = renderApp({ listSessions: async () => sessionItems(2) });
+
+      await press(stdin, "/resume");
+      await press(stdin, ENTER);
+      await vi.waitFor(() => expect(store.getSnapshot().picker).toBeDefined());
+      await press(stdin, CTRL_C);
+
+      await vi.waitFor(() => expect(store.getSnapshot().picker).toBeUndefined());
+    });
   });
 
   describe("AskUserQuestion", () => {
@@ -986,6 +1154,25 @@ describe("createInkUi", () => {
 
   afterEach(() => {
     Reflect.deleteProperty(console, "Console");
+  });
+
+  it("터미널에 kitty keyboard protocol 지원 여부를 묻는다 (Shift+Enter 구분용)", async () => {
+    const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => undefined });
+    const stdout = Object.assign(new PassThrough(), { columns: 80, rows: 24, isTTY: true });
+    let written = "";
+    stdout.on("data", (chunk: Buffer) => {
+      written += chunk.toString();
+    });
+    const session = new FakeSession();
+    const ui = createInkUi({ stdin: stdin as unknown as NodeJS.ReadStream, stdout: stdout as unknown as NodeJS.WriteStream });
+
+    const running = ui.run(session.asSession(), {
+      commandContext: { session: session.asSession(), readUsage: async () => SNAPSHOT },
+      recordUsage: async () => SNAPSHOT,
+    });
+    await vi.waitFor(() => expect(written).toContain("\u001b[?u"));
+    await session.close();
+    await running;
   });
 
   it("run은 session을 시작하고, session_closed가 오면 화면을 닫고 끝난다", async () => {

@@ -2,6 +2,7 @@ import type { ModelInfo, PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { HELP_TEXT, parseInput, runCommand } from "../src/commands.js";
 import type { CommandContext, ParsedInput } from "../src/commands.js";
+import type { SessionListItem } from "../src/sessionList.js";
 
 type CommandInput = Extract<ParsedInput, { kind: "command" }>;
 
@@ -154,17 +155,78 @@ describe("runCommand", () => {
     expect(printed).toEqual(["세션 ID 형식이 아닙니다: abc"]);
   });
 
-  it("인자 없는 /resume은 사용법을 출력한다", async () => {
-    const { context, session, printed } = createContext({ isBusy: true });
-    await runCommand(command("resume"), context);
-    expect(session.replace).not.toHaveBeenCalled();
-    expect(printed).toEqual(["사용법: /resume <session-id>  (현재 세션: sess-1)"]);
-  });
+  describe("인자 없는 /resume", () => {
+    const items: SessionListItem[] = [
+      { sessionId: VALID_ID, title: "최근 작업", lastModified: 300 },
+      { sessionId: "sess-1", title: "지금 세션", lastModified: 200 },
+      { sessionId: "old", title: "예전 작업", lastModified: 100 },
+    ];
 
-  it("세션 ID가 없으면 사용법에 없음을 표시한다", async () => {
-    const { context, printed } = createContext({ sessionId: undefined });
-    await runCommand(command("resume"), context);
-    expect(printed).toEqual(["사용법: /resume <session-id>  (현재 세션: 없음)"]);
+    function pickerContext(pick: (list: SessionListItem[]) => Promise<string | undefined>, overrides = {}) {
+      const created = createContext(overrides);
+      const listSessions = vi.fn(async () => items);
+      const pickSession = vi.fn(pick);
+      const context: CommandContext = { ...created.context, listSessions, pickSession };
+      return { ...created, context, listSessions, pickSession };
+    }
+
+    it("지금 세션을 뺀 목록에서 고른 세션으로 이동한다", async () => {
+      const { context, session, printed, pickSession } = pickerContext(async () => VALID_ID);
+
+      await runCommand(command("resume"), context);
+
+      expect(pickSession).toHaveBeenCalledWith([items[0], items[2]]);
+      expect(session.replace).toHaveBeenCalledWith(VALID_ID);
+      expect(printed).toEqual([`세션 ${VALID_ID}(으)로 이동했습니다 (이전 세션: sess-1)`]);
+    });
+
+    it("고르지 않고 취소하면 이동하지 않는다", async () => {
+      const { context, session, printed } = pickerContext(async () => undefined);
+
+      await runCommand(command("resume"), context);
+
+      expect(session.replace).not.toHaveBeenCalled();
+      expect(printed).toEqual(["세션 선택을 취소했습니다"]);
+    });
+
+    it("열 세션이 없으면 안내한다", async () => {
+      const { context, printed, pickSession } = pickerContext(async () => undefined);
+      const emptyContext: CommandContext = { ...context, listSessions: async () => [items[1]!] };
+
+      await runCommand(command("resume"), emptyContext);
+
+      expect(pickSession).not.toHaveBeenCalled();
+      expect(printed).toEqual(["이어서 열 세션이 없습니다"]);
+    });
+
+    it("목록을 읽지 못하면 오류를 출력한다", async () => {
+      const { context, printed } = pickerContext(async () => undefined);
+      const failing: CommandContext = {
+        ...context,
+        listSessions: async () => {
+          throw new Error("디렉터리 없음");
+        },
+      };
+
+      await runCommand(command("resume"), failing);
+
+      expect(printed).toEqual(["세션 목록을 가져오지 못했습니다: 디렉터리 없음"]);
+    });
+
+    it("busy면 목록을 읽지 않고 안내만 출력한다", async () => {
+      const { context, printed, listSessions } = pickerContext(async () => VALID_ID, { isBusy: true });
+
+      await runCommand(command("resume"), context);
+
+      expect(listSessions).not.toHaveBeenCalled();
+      expect(printed).toEqual(["턴이 끝난 뒤 다시 입력해 주세요"]);
+    });
+
+    it("화면이 목록 선택을 지원하지 않으면 사용법을 출력한다", async () => {
+      const { context, printed } = createContext({ sessionId: undefined });
+      await runCommand(command("resume"), context);
+      expect(printed).toEqual(["사용법: /resume <session-id>  (현재 세션: 없음)"]);
+    });
   });
 
   it("busy 중 /model x·/clear·/resume id는 안내만 출력한다", async () => {

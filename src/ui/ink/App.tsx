@@ -1,6 +1,6 @@
 import { Box, useBoxMetrics, useInput } from "ink";
 import type { DOMElement } from "ink";
-import { useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { CommandContext } from "../../commands.js";
 import { parseInput, runCommand } from "../../commands.js";
 import { nextPermissionMode } from "../../permissionModes.js";
@@ -17,11 +17,13 @@ import type {
 } from "../../types.js";
 import { remainingCreditUsd } from "../../usageStore.js";
 import { formatAnswerSummary } from "../../userQuestions.js";
+import type { SessionListItem } from "../../sessionList.js";
 import { formatPlanPreview } from "../plain.js";
 import type { UiRunOptions } from "../runOptions.js";
 import { InputBox } from "./InputBox.js";
 import { PermissionDialog } from "./PermissionDialog.js";
 import { QuestionDialog } from "./QuestionDialog.js";
+import { SessionPicker } from "./SessionPicker.js";
 import { StatusBar } from "./StatusBar.js";
 import { Transcript } from "./TranscriptView.js";
 import type { NoticeTone, TranscriptState } from "./transcript.js";
@@ -39,6 +41,8 @@ export interface InkUiSnapshot {
   dialog?: { id: number; request: PermissionRequest };
   /** 지금 묻는 AskUserQuestion 질문. 권한 질문과 같은 대기열로 하나씩 뜬다. */
   question?: QuestionDialogState;
+  /** /resume 세션 목록 창. id는 열 때마다 새로 매기는 key다. */
+  picker?: { id: number; items: SessionListItem[] };
   /** 시작 잔액을 읽기 전에는 없다. */
   remainingCreditUsd?: number;
 }
@@ -64,6 +68,7 @@ export class InkUiStore {
   /** 떠 있는 질문 창을 닫는다. 취소면 undefined를 넘긴다. */
   private closeQuestion: ((answers: UserQuestionAnswers | undefined) => void) | undefined;
   private questionAnswers: UserQuestionAnswers = {};
+  private closePicker: ((sessionId: string | undefined) => void) | undefined;
   /** 권한 질문과 AskUserQuestion은 화면 하나를 같이 쓰므로 한 대기열로 차례를 정한다. */
   private dialogQueue: Promise<unknown> = Promise.resolve();
   private nextDialogId = 0;
@@ -79,6 +84,24 @@ export class InkUiStore {
   readonly prompter: PermissionPrompter = (request) => this.enqueue(() => this.askPermission(request));
 
   readonly asker: UserQuestionPrompter = (request) => this.enqueue(() => this.askQuestions(request));
+
+  /** 세션 목록 창을 띄우고 고른 세션 ID를 돌려준다. 취소하면 undefined. */
+  readonly pickSession = (items: SessionListItem[]): Promise<string | undefined> =>
+    this.enqueue(
+      () =>
+        new Promise<string | undefined>((resolve) => {
+          this.closePicker = (sessionId) => {
+            this.closePicker = undefined;
+            this.update({ picker: undefined });
+            resolve(sessionId);
+          };
+          this.update({ picker: { id: this.nextDialogId++, items } });
+        }),
+    );
+
+  answerPicker(sessionId: string | undefined): void {
+    this.closePicker?.(sessionId);
+  }
 
   /** 떠 있는 대화상자에 답한다. 없으면 무시한다. */
   answer(decision: PermissionDecision): void {
@@ -248,14 +271,17 @@ export interface AppProps {
   commandContext: UiRunOptions["commandContext"];
   initialHistory: readonly string[];
   saveHistory?: (history: string[]) => void;
+  /** 처음 그린 뒤 한 번 실행할 명령. */
+  startupCommand?: string;
 }
 
 /** 대화, 대화상자, 입력창, 상태 줄을 배치하고 화면 전체 키(Esc·Ctrl+C·Shift+Tab)를 처리한다. Ctrl+D는 InputBox가 받는다. */
-export function App({ store, session, commandContext, initialHistory, saveHistory }: AppProps) {
+export function App({ store, session, commandContext, initialHistory, saveHistory, startupCommand }: AppProps) {
   const {
     transcript,
     dialog,
     question,
+    picker,
     remainingCreditUsd: remaining,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const lastIdleInterruptAt = useRef(0);
@@ -295,6 +321,17 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
 
   const print: CommandContext["print"] = (text) => store.addNotice("info", text);
 
+  const runInput = (text: string): void => {
+    const parsed = parseInput(text);
+    if (parsed.kind === "prompt") {
+      session.send(text);
+      return;
+    }
+    runCommand(parsed, { ...commandContext, print, pickSession: store.pickSession }).catch((error: unknown) =>
+      store.addNotice("error", `오류: ${errorText(error)}`),
+    );
+  };
+
   const submit = (text: string): void => {
     if (text.trim() === "") {
       return;
@@ -304,15 +341,17 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
       return;
     }
     store.addUserInput(text);
-    const parsed = parseInput(text);
-    if (parsed.kind === "prompt") {
-      session.send(text);
-      return;
-    }
-    runCommand(parsed, { ...commandContext, print }).catch((error: unknown) =>
-      store.addNotice("error", `오류: ${errorText(error)}`),
-    );
+    runInput(text);
   };
+
+  // 시작 명령은 처음 그린 뒤 한 번만 실행한다(입력한 것이 아니므로 대화 영역에 남기지 않는다).
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startupCommand !== undefined && !startedRef.current) {
+      startedRef.current = true;
+      runInput(startupCommand);
+    }
+  });
 
   // 대화상자가 떠 있는 동안 Esc·단축키는 PermissionDialog가 받는다.
   // 한 청크의 여러 키는 렌더 없이 연달아 오므로 대화상자 여부는 store에서 바로 읽는다.
@@ -322,6 +361,13 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
       if (key.ctrl && input === "c") {
         store.answer("deny");
         void session.interrupt();
+      }
+      return;
+    }
+    // 목록 창의 키는 SessionPicker가 받는다. Ctrl+C는 취소로 본다.
+    if (snapshot.picker !== undefined) {
+      if (key.ctrl && input === "c") {
+        store.answerPicker(undefined);
       }
       return;
     }
@@ -368,10 +414,20 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
           />
         </Box>
       )}
+      {picker === undefined ? null : (
+        <Box marginTop={1}>
+          <SessionPicker
+            key={picker.id}
+            items={picker.items}
+            onPick={(sessionId) => store.answerPicker(sessionId)}
+            onCancel={() => store.answerPicker(undefined)}
+          />
+        </Box>
+      )}
       <Box ref={inputBoxRef} marginTop={1}>
         <InputBox
           originRow={inputBoxMetrics.hasMeasured ? inputBoxMetrics.top : undefined}
-          isActive={dialog === undefined && (question === undefined || question.typing)}
+          isActive={dialog === undefined && picker === undefined && (question === undefined || question.typing)}
           initialHistory={initialHistory}
           onSubmit={submit}
           onInterrupt={handleInterrupt}

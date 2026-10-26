@@ -113,7 +113,7 @@ interface InputState {
   draft: string;
 }
 
-/** 프롬프트 입력창. 줄 끝 \\ + Enter로 여러 줄을 이어 받고, ↑/↓로 입력 기록을 오간다. */
+/** 프롬프트 입력창. Shift+Enter·Option+Enter나 줄 끝 \\ + Enter로 여러 줄을 받고, ↑/↓로 입력 기록을 오간다. */
 export function InputBox({
   isActive,
   initialHistory,
@@ -151,10 +151,10 @@ export function InputBox({
     update({ historyIndex: index, line: lineOf(index === -1 ? draft : (history[index] ?? "")) });
   };
 
-  // readline처럼 빈 줄과 직전과 같은 줄은 기록하지 않는다. 기록 파일은 줄 단위라 줄바꿈이 든 붙여넣기도 뺀다.
+  // readline처럼 빈 입력과 직전과 같은 입력은 기록하지 않는다. 여러 줄 입력도 하나로 기록한다.
   const recordHistory = (text: string): void => {
     const { history } = stateRef.current;
-    if (text === "" || text.includes("\n") || text === history[0]) {
+    if (text.trim() === "" || text === history[0]) {
       return;
     }
     const next = [text, ...history].slice(0, HISTORY_SIZE);
@@ -164,13 +164,14 @@ export function InputBox({
 
   const submitLine = (): void => {
     const text = stateRef.current.line.chars.join("");
-    recordHistory(text);
     update({ line: EMPTY_LINE, historyIndex: -1, draft: "" });
     const completed = multiline.push(text);
     if (completed === undefined) {
       update({ collectedLines: [...stateRef.current.collectedLines, text] });
       return;
     }
+    // 줄 끝 \로 이어 받은 입력은 줄마다가 아니라 완성된 입력 하나로 기록한다.
+    recordHistory(completed);
     update({ collectedLines: [] });
     onSubmit(completed);
   };
@@ -206,6 +207,9 @@ export function InputBox({
         if (stateRef.current.line.chars.length === 0) {
           onExit?.();
         }
+      } else if (key.return && (key.shift || key.meta)) {
+        // Shift+Enter(kitty keyboard protocol)·Option+Enter는 제출하지 않고 줄을 바꾼다.
+        editLine((line) => insertText(line, "\n"));
       } else if (key.return) {
         submitLine();
       } else if (key.upArrow) {

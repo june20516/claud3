@@ -5,6 +5,7 @@ import {
   unknownPermissionModeMessage,
 } from "./permissionModes.js";
 import type { Session } from "./session.js";
+import type { SessionListItem } from "./sessionList.js";
 import { remainingCreditUsd } from "./usageStore.js";
 import type { UsageSnapshot } from "./usageStore.js";
 
@@ -22,6 +23,10 @@ export interface CommandContext {
   >;
   readUsage: () => Promise<UsageSnapshot>;
   print: (text: string) => void;
+  /** 이 프로젝트의 세션 목록(최신순). 인자 없는 /resume에서 쓴다. */
+  listSessions?: () => Promise<SessionListItem[]>;
+  /** 목록에서 세션을 고르게 한다. 화면이 제공하고, 취소하면 undefined. */
+  pickSession?: (items: SessionListItem[]) => Promise<string | undefined>;
 }
 
 const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
@@ -35,13 +40,15 @@ export const HELP_TEXT = [
   "  /model           현재 모델과 쓸 수 있는 모델 목록",
   "  /model <ID>      모델 바꾸기 (예: /model claude-sonnet-5-5). 바꾼 뒤 첫 턴은 캐시가 새로 만들어져 비쌉니다",
   "  /clear           새 대화 시작",
-  "  /resume <ID>     이전 세션으로 이동 (종료할 때 세션 ID가 출력됩니다)",
+  "  /resume          이 프로젝트의 세션 목록(최신순)에서 골라 이동",
+  "  /resume <ID>     그 세션으로 바로 이동 (종료할 때 세션 ID가 출력됩니다)",
   "  /help            이 도움말",
   "  /mode            현재 권한 모드와 선택지",
   "  /mode <이름>     권한 모드 바꾸기 (default, acceptEdits, plan, auto)",
   "  그 밖의 /…       플러그인 스킬 등으로 Claude에게 그대로 전달 (예: /suberpower:brainstorming)",
   "키",
   "  Enter            보내기 · 줄 끝에 \\ 를 붙이고 Enter: 여러 줄 입력",
+  "  Shift+Enter      줄바꿈 (Ink 화면, iTerm2 등 지원 터미널) · Option+Enter도 같음",
   "  ↑/↓              이전 입력",
   "  Esc / Ctrl+C     실행 중인 턴 중단 · 권한 질문 중 Ctrl+C는 거부",
   "  Ctrl+C 두 번     종료 · Ctrl+D 종료",
@@ -53,6 +60,7 @@ export const HELP_TEXT = [
   "  ↑/↓·Enter 또는 숫자로 답 · 복수 선택은 Space·숫자 체크 · 직접 입력 · Esc 취소",
   "실행 옵션 (터미널에서)",
   "  claud3 --model <ID>      모델 지정해 시작",
+  "  claud3 --resume          세션 목록에서 골라 이어서 시작",
   "  claud3 --resume <ID>     세션 이어서 시작",
   "  claud3 --permission-mode <이름>  권한 모드 지정해 시작",
   "    (기본값은 ~/.config/claud3/config.json의 permissionMode)",
@@ -137,6 +145,47 @@ function withPreviousSession(message: string, previousSessionId: string | undefi
   return previousSessionId === undefined ? message : `${message} (이전 세션: ${previousSessionId})`;
 }
 
+async function resumeSession(context: CommandContext, sessionId: string): Promise<void> {
+  const previousSessionId = context.session.sessionId;
+  context.print(
+    await runMutation(
+      context,
+      () => context.session.replace(sessionId),
+      withPreviousSession(`세션 ${sessionId}(으)로 이동했습니다`, previousSessionId),
+    ),
+  );
+}
+
+/** 인자 없는 /resume. 지금 세션을 뺀 목록에서 골라 이동한다. 화면이 고르기를 지원하지 않으면 사용법을 보인다. */
+async function pickAndResume(context: CommandContext): Promise<void> {
+  const { session, print, listSessions, pickSession } = context;
+  if (listSessions === undefined || pickSession === undefined) {
+    print(`사용법: /resume <session-id>  (현재 세션: ${session.sessionId ?? "없음"})`);
+    return;
+  }
+  if (session.isBusy) {
+    print(BUSY_MESSAGE);
+    return;
+  }
+  let items: SessionListItem[];
+  try {
+    items = (await listSessions()).filter((item) => item.sessionId !== session.sessionId);
+  } catch (error) {
+    print(`세션 목록을 가져오지 못했습니다: ${errorText(error)}`);
+    return;
+  }
+  if (items.length === 0) {
+    print("이어서 열 세션이 없습니다");
+    return;
+  }
+  const picked = await pickSession(items);
+  if (picked === undefined) {
+    print("세션 선택을 취소했습니다");
+    return;
+  }
+  await resumeSession(context, picked);
+}
+
 export async function runCommand(
   command: Extract<ParsedInput, { kind: "command" }>,
   context: CommandContext,
@@ -189,23 +238,14 @@ export async function runCommand(
     }
     case "resume":
       if (argument === "") {
-        print(`사용법: /resume <session-id>  (현재 세션: ${session.sessionId ?? "없음"})`);
+        await pickAndResume(context);
         return;
       }
       if (!SESSION_ID_PATTERN.test(argument)) {
         print(`세션 ID 형식이 아닙니다: ${argument}`);
         return;
       }
-      {
-        const previousSessionId = session.sessionId;
-        print(
-          await runMutation(
-            context,
-            () => session.replace(argument),
-            withPreviousSession(`세션 ${argument}(으)로 이동했습니다`, previousSessionId),
-          ),
-        );
-      }
+      await resumeSession(context, argument);
       return;
   }
 }

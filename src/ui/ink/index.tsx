@@ -38,8 +38,10 @@ export function createInkUi({ stdin, stdout, historyFile }: InkUiOptions): ChatU
             commandContext={options.commandContext}
             initialHistory={initialHistory}
             saveHistory={saveHistory}
+            {...(options.startupCommand === undefined ? {} : { startupCommand: options.startupCommand })}
           />,
-          { stdin, stdout, exitOnCtrlC: false },
+          // kitty keyboard protocol을 지원하는 터미널(iTerm2 등)에서는 Shift+Enter가 Enter와 구분되어 들어온다.
+          { stdin, stdout, exitOnCtrlC: false, kittyKeyboard: { mode: "auto" } },
         );
         connectSession(store, session, options, () => {
           // 종료 안내(세션 ID)가 화면에 나간 뒤 내린다.

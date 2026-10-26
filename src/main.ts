@@ -10,6 +10,7 @@ import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionM
 import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
 import { loadHistoryLines } from "./sessionHistory.js";
+import { loadSessionList } from "./sessionList.js";
 import { createInkUi } from "./ui/ink/index.js";
 import { createPlainUi } from "./ui/plain.js";
 import type { ChatUi } from "./ui/runOptions.js";
@@ -18,6 +19,8 @@ import { readUserConfig, resolvePermissionMode } from "./userConfig.js";
 
 export interface CliArgs {
   resume?: string;
+  /** 값 없는 --resume. 시작한 뒤 세션 목록에서 고른다. */
+  pickResume?: boolean;
   model?: string;
   permissionMode?: SelectablePermissionMode;
   plain: boolean;
@@ -30,7 +33,7 @@ const USAGE = `사용법: claud3 [옵션]
 Claude Agent SDK로 실행하는 터미널 코딩 CLI입니다. API 키는 macOS 키체인 'anthropic-api'에서 읽습니다.
 
 옵션:
-  --resume <id>   이전 세션을 이어서 실행
+  --resume [id]   이전 세션을 이어서 실행 (id를 생략하면 세션 목록에서 고름)
   --model <name>  사용할 모델 (예: claude-sonnet-5-5)
   --permission-mode <mode>  권한 모드 (default, acceptEdits, plan, auto)
                   생략하면 ~/.config/claud3/config.json의 permissionMode, 없으면 Claude Code 설정
@@ -55,9 +58,21 @@ export function shouldUsePlainUi(params: { plain: boolean; stdinIsTty: boolean; 
   return params.plain || !params.stdinIsTty || !params.stdoutIsTty;
 }
 
+const RESUME_FLAG = "--resume";
+
+/** 값 없이 쓴 --resume(맨 끝이거나 다음이 옵션)을 빼고, 있었는지 돌려준다. node의 parseArgs는 선택적 값을 지원하지 않는다. */
+function extractBareResume(argv: string[]): { args: string[]; pickResume: boolean } {
+  const index = argv.findIndex((arg, position) => arg === RESUME_FLAG && (argv[position + 1] ?? "-").startsWith("-"));
+  if (index === -1) {
+    return { args: argv, pickResume: false };
+  }
+  return { args: [...argv.slice(0, index), ...argv.slice(index + 1)], pickResume: true };
+}
+
 export function parseArgs(argv: string[]): CliArgs {
+  const { args, pickResume } = extractBareResume(argv);
   const { values } = parseNodeArgs({
-    args: argv,
+    args,
     options: {
       resume: { type: "string" },
       model: { type: "string" },
@@ -78,6 +93,7 @@ export function parseArgs(argv: string[]): CliArgs {
     plain: values.plain ?? false,
     help: values.help ?? false,
     version: values.version ?? false,
+    ...(pickResume ? { pickResume } : {}),
     ...(values.resume === undefined ? {} : { resume: values.resume }),
     ...(values.model === undefined ? {} : { model: values.model }),
     ...(permissionMode === undefined ? {} : { permissionMode }),
@@ -147,7 +163,9 @@ async function main(): Promise<number> {
     commandContext: {
       session,
       readUsage: () => readUsage(),
+      listSessions: () => loadSessionList({ cwd: process.cwd() }),
     },
+    ...(args.pickResume === true ? { startupCommand: "/resume" } : {}),
     recordUsage: (costUsd) => addUsage(costUsd),
   });
   return 0;

@@ -20,6 +20,13 @@ describe("loadHistory", () => {
     expect(loadHistory(join(dir, "none"))).toEqual([]);
   });
 
+  it("JSON 문자열 줄은 풀어서 읽어 줄바꿈이 든 입력을 되살리고, 예전 형식 줄은 그대로 읽는다", () => {
+    const file = join(dir, "history");
+    writeFileSync(file, `${JSON.stringify("첫 줄\n둘째 줄")}\n예전 입력\n"따옴표로 시작하는 예전 입력\n`);
+
+    expect(loadHistory(file)).toEqual(["첫 줄\n둘째 줄", "예전 입력", '"따옴표로 시작하는 예전 입력']);
+  });
+
   it("빈 줄은 제외하고 첫 줄부터 읽는다", () => {
     const file = join(dir, "history");
     writeFileSync(file, "latest\n\nolder\n");
@@ -44,8 +51,17 @@ describe("createHistorySaver", () => {
     save(["a"]);
     save(["b", "a"]);
 
-    await vi.waitFor(() => expect(readFileSync(file, "utf8")).toBe("b\na\n"));
+    await vi.waitFor(() => expect(readFileSync(file, "utf8")).toBe('"b"\n"a"\n'));
     expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it("줄바꿈이 든 입력도 한 줄로 저장하고 loadHistory로 그대로 되살린다", async () => {
+    const file = join(dir, "history");
+    const history = ["첫 줄\n둘째 줄", 'a "따옴표" \\ 역슬래시'];
+    createHistorySaver(file, vi.fn())(history);
+
+    await vi.waitFor(() => expect(readFileSync(file, "utf8").split("\n")).toHaveLength(3));
+    expect(loadHistory(file)).toEqual(history);
   });
 
   it("쓰기 실패는 처음 한 번만 onError로 알린다", async () => {

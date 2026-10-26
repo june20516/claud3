@@ -26,6 +26,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 |---|---|
 | `claud3` | 새 세션 시작 |
 | `claud3 --model <ID>` | 모델을 지정해 시작 |
+| `claud3 --resume` | 이 프로젝트의 세션 목록(최신순, 제목·마지막 대화 시간)에서 골라 이어서 시작. 취소하면 새 세션 |
 | `claud3 --resume <ID>` | 이전 세션을 이어서 시작 (이전 대화의 마지막 100줄을 먼저 보여 줌) |
 | `claud3 --permission-mode <mode>` | 권한 모드를 지정해 시작 (`default`, `acceptEdits`, `plan`, `auto`) |
 | `claud3 --help` · `--version` | 도움말 · 버전 |
@@ -44,6 +45,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | `/model` | 현재 모델과 쓸 수 있는 모델 목록 |
 | `/model <ID>` | 모델 바꾸기 (예: `/model claude-sonnet-5-5`). 바꾼 뒤 첫 턴은 캐시가 새로 만들어져 비쌉니다 |
 | `/clear` | 새 대화 시작 |
+| `/resume` | 이 프로젝트의 세션 목록(최신순, 제목·마지막 대화 시간)에서 골라 이동. Ink 화면은 ↑/↓·Enter·Esc, plain 화면은 번호 |
 | `/resume <ID>` | 이전 세션으로 이동, 이전 대화의 마지막 100줄 표시 (종료할 때 세션 ID가 출력됩니다) |
 | `/help` | 도움말 |
 | `/mode` | 현재 권한 모드와 선택지 |
@@ -55,6 +57,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | 키 | 설명 |
 |---|---|
 | Enter | 보내기. 줄 끝에 `\`를 붙이고 Enter를 누르면 여러 줄 입력 |
+| Shift+Enter | 줄바꿈 (Ink 화면, kitty keyboard protocol을 지원하는 터미널: iTerm2 등). Option+Enter도 같음(iTerm2에서 Option을 Esc+로 둔 경우) |
 | ↑/↓ | 이전 입력 |
 | Esc / Ctrl+C | 실행 중인 턴 중단. 권한 질문 중 Ctrl+C는 거부 |
 | Ctrl+C 두 번 | 종료 |
@@ -95,6 +98,7 @@ Claude가 선택지를 주고 물으면 질문 창이 뜹니다. 질문이 여�
 | 입력 | 설명 |
 |---|---|
 | `claud3 --model <ID>` | 모델 지정해 시작 |
+| `claud3 --resume` | 세션 목록에서 골라 이어서 시작 |
 | `claud3 --resume <ID>` | 세션 이어서 시작 |
 | `claud3 --permission-mode <이름>` | 권한 모드 지정해 시작 |
 | `claud3 --plain` | readline 화면으로 시작 |
@@ -152,7 +156,7 @@ Claude가 선택지를 주고 물으면 질문 창이 뜹니다. 질문이 여�
 - 턴이 끝날 때마다 그 턴의 비용과 상태 줄이 표시됩니다.
 - `/cost`로 이번 세션 비용, 전체 누적 비용, 남은 크레딧 추정을 확인합니다.
 - 누적 비용은 `~/.config/claud3/usage.json`에 저장되며, 시작 잔액 기본값은 US$100입니다. 시작 잔액을 바꾸려면 이 파일의 `startingCreditUsd` 값을 직접 고칩니다.
-- 입력 기록은 `~/.config/claud3/history`에 저장됩니다.
+- 입력 기록은 `~/.config/claud3/history`에 저장됩니다. 여러 줄 입력도 하나로 기록되며(한 줄에 JSON 문자열 하나), ↑로 다시 불러올 수 있습니다.
 - 위 두 파일의 위치는 환경 변수 `CLAUD3_CONFIG_DIR`로 바꿀 수 있습니다.
 - 남은 크레딧은 claud3가 기록한 비용으로 계산한 추정치입니다. 다른 곳에서 쓴 사용량은 반영되지 않으므로 정확한 잔액은 Console › Billing에서 확인하세요.
 - 잔액 부족 오류가 나면 프로모션 크레딧이 소진되었거나 만료되었을 수 있으니 Console › Billing을 확인하세요.

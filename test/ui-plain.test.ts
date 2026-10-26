@@ -20,6 +20,7 @@ import {
   parsePlanDecision,
 } from "../src/ui/plain.js";
 import type { UiRunOptions } from "../src/ui/runOptions.js";
+import { loadHistory } from "../src/inputHistory.js";
 
 describe("parseDecision", () => {
   it("y/yes는 allow, n/no는 deny, a/always는 always (대소문자 무시)", () => {
@@ -322,9 +323,10 @@ function createTempDir(): string {
   return mkdtempSync(join(tmpdir(), "claud3-ui-"));
 }
 
+/** 기록 파일의 입력들(JSON 줄을 풀어서). */
 function readLines(path: string): string[] {
   try {
-    return readFileSync(path, "utf8").split("\n").filter((line) => line !== "");
+    return loadHistory(path);
   } catch {
     return [];
   }
@@ -428,7 +430,7 @@ class FakeSession {
   });
   readonly setModel = vi.fn(async () => undefined);
   readonly listModels = vi.fn(async () => []);
-  readonly replace = vi.fn(async () => undefined);
+  readonly replace = vi.fn(async (_resume?: string) => undefined);
 
   onEvent(listener: (event: UiEvent) => void): void {
     this.listeners.push(listener);
@@ -456,6 +458,8 @@ const SNAPSHOT: UsageSnapshot = { startingCreditUsd: 100, spentUsd: 0.5 };
 interface RunUiOverrides {
   recordUsage?: UiRunOptions["recordUsage"];
   readUsage?: CommandContext["readUsage"];
+  listSessions?: CommandContext["listSessions"];
+  startupCommand?: string;
 }
 
 function createRunUi(overrides: RunUiOverrides = {}, terminal = false) {
@@ -469,13 +473,62 @@ function createRunUi(overrides: RunUiOverrides = {}, terminal = false) {
   const commandContext: UiRunOptions["commandContext"] = {
     session: session.asSession(),
     readUsage: overrides.readUsage ?? (async () => SNAPSHOT),
+    ...(overrides.listSessions === undefined ? {} : { listSessions: overrides.listSessions }),
   };
   const recordUsage = overrides.recordUsage ?? vi.fn(async (_costUsd: number) => SNAPSHOT);
   const ui = createPlainUi({ input, output, terminal });
-  const running = ui.run(session.asSession(), { commandContext, recordUsage });
+  const running = ui.run(session.asSession(), {
+    commandContext,
+    recordUsage,
+    ...(overrides.startupCommand === undefined ? {} : { startupCommand: overrides.startupCommand }),
+  });
   const plain = (): string => stripVTControlCharacters(state.written);
   return { input, state, plain, session, recordUsage, running, ui };
 }
+
+describe("createPlainUi 세션 고르기", () => {
+  const RECENT_ID = "123e4567-e89b-12d3-a456-426614174000";
+  const now = Date.now();
+  const listSessions = async () => [
+    { sessionId: RECENT_ID, title: "최근 작업", lastModified: now - 3 * 60_000 },
+    { sessionId: "223e4567-e89b-12d3-a456-426614174000", title: "예전 작업", lastModified: now - 2 * 86_400_000 },
+  ];
+  const pickPromptCount = (text: string): number => text.split("번호 › ").length - 1;
+
+  it("/resume은 최신순 목록을 제목·시간과 함께 보이고, 고른 번호의 세션으로 이동한다", async () => {
+    const { input, plain, session } = createRunUi({ listSessions });
+
+    input.write("/resume\n");
+    await vi.waitFor(() => expect(pickPromptCount(plain())).toBe(1));
+    expect(plain()).toMatch(/1\. 최근 작업 · \d+\/\d{2} \d{2}:\d{2} · 3분 전/);
+    expect(plain()).toMatch(/2\. 예전 작업 · .* · 2일 전/);
+    input.write("1\n");
+
+    await vi.waitFor(() => expect(session.replace).toHaveBeenCalledWith(RECENT_ID));
+  });
+
+  it("빈 답이면 취소하고, 범위 밖 번호는 다시 묻는다", async () => {
+    const { input, plain, session } = createRunUi({ listSessions });
+
+    input.write("/resume\n");
+    await vi.waitFor(() => expect(pickPromptCount(plain())).toBe(1));
+    input.write("9\n");
+    await vi.waitFor(() => expect(pickPromptCount(plain())).toBe(2));
+    input.write("\n");
+
+    await vi.waitFor(() => expect(plain()).toContain("세션 선택을 취소했습니다"));
+    expect(session.replace).not.toHaveBeenCalled();
+  });
+
+  it("startupCommand가 있으면 시작하자마자 실행한다", async () => {
+    const { input, plain, session } = createRunUi({ listSessions, startupCommand: "/resume" });
+
+    await vi.waitFor(() => expect(pickPromptCount(plain())).toBe(1));
+    input.write("2\n");
+
+    await vi.waitFor(() => expect(session.replace).toHaveBeenCalledWith("223e4567-e89b-12d3-a456-426614174000"));
+  });
+});
 
 describe("createPlainUi run", () => {
   it("\\로 끝나는 줄은 '… ' 프롬프트로 이어 받고, 합친 입력을 보낸다", async () => {
