@@ -20,6 +20,7 @@ import { remainingCreditUsd } from "../usageStore.js";
 import { formatQuestionPrompt, parseQuestionAnswer } from "../userQuestions.js";
 import { formatSessionTime } from "../sessionList.js";
 import type { SessionListItem } from "../sessionList.js";
+import { formatLocation } from "../workspaceInfo.js";
 import type { ChatUi, UiRunOptions } from "./runOptions.js";
 
 const PROMPT = "> ";
@@ -335,7 +336,10 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
     write(`\n${styleText("yellow", "(중단됨)")}\n`);
   };
 
-  const run = (session: Session, { commandContext, recordUsage, startupCommand }: UiRunOptions): Promise<void> =>
+  const run = (
+    session: Session,
+    { commandContext, recordUsage, startupCommand, readWorkspace }: UiRunOptions,
+  ): Promise<void> =>
     new Promise((resolve) => {
       activeSession = session;
       const multiline = new MultilineBuffer();
@@ -363,7 +367,10 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
             sessionCostUsd: session.totalCostUsd,
             remainingCreditUsd: remainingCreditUsd(snapshot),
           });
-          write(`${statusLine}\n`);
+          // 위치는 보조 정보라 읽지 못하면 빼고 보인다.
+          const workspace = await readWorkspace?.().catch(() => undefined);
+          const location = workspace === undefined ? "" : `${styleText("cyan", formatLocation(workspace))}${styleText("dim", " · ")}`;
+          write(`${location}${statusLine}\n`);
         } catch (error) {
           write(errorLine(`사용량을 기록하지 못했습니다: ${errorText(error)}`));
         }

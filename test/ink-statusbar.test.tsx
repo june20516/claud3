@@ -41,3 +41,55 @@ describe("StatusBar 배경", () => {
     expect(lastFrame() ?? "").toContain(LIGHT_FOREGROUND);
   });
 });
+
+describe("StatusBar 위치 정보", () => {
+  const DIRECTORY_COLOR = "\u001b[38;2;135;175;215m";
+  const BRANCH_COLOR = "\u001b[38;2;175;215;135m";
+
+  it("디렉터리와 브랜치를 각각 다른 색으로 왼쪽에, 기존 정보를 오른쪽에 보인다", () => {
+    const { lastFrame, stdout } = render(
+      <StatusBar model="claude-test" sessionCostUsd={0} workspace={{ directory: "~/repo", branch: "main" }} />,
+    );
+    const frame = lastFrame() ?? "";
+    const text = stripVTControlCharacters(frame);
+
+    expect(frame).toContain(`${DIRECTORY_COLOR} ~/repo`);
+    expect(frame).toContain(BRANCH_COLOR);
+    expect(text.startsWith(" ~/repo  main")).toBe(true);
+    expect(text.trimEnd().endsWith("claude-test · 세션 $0.0000")).toBe(true);
+    expect(stringWidth(text)).toBe(stdout.columns);
+  });
+
+  it("폭이 모자라면 디렉터리 앞부분을 잘라 오른쪽 정보는 끝까지 남긴다", () => {
+    const directory = `~/${"very-long-directory/".repeat(8)}leaf`;
+    const { lastFrame, stdout } = render(
+      <StatusBar model="claude-test" sessionCostUsd={0} workspace={{ directory, branch: "main" }} />,
+    );
+    const text = stripVTControlCharacters(lastFrame() ?? "");
+
+    expect(text.split("\n")).toHaveLength(1);
+    expect(stringWidth(text)).toBe(stdout.columns);
+    expect(text).toContain("…");
+    expect(text).toContain("leaf");
+    expect(text.trimEnd().endsWith("claude-test · 세션 $0.0000")).toBe(true);
+  });
+
+  it("오른쪽 정보만으로 폭이 거의 차면 위치를 빼고 한 줄로 자른다", () => {
+    const model = `claude-${"x".repeat(95)}`;
+    const { lastFrame, stdout } = render(
+      <StatusBar model={model} sessionCostUsd={0} workspace={{ directory: "~/repo", branch: "main" }} />,
+    );
+    const text = stripVTControlCharacters(lastFrame() ?? "");
+
+    expect(text.split("\n")).toHaveLength(1);
+    expect(stringWidth(text)).toBe(stdout.columns);
+    expect(text).not.toContain("~/repo");
+    expect(text.startsWith(" claude-xxx")).toBe(true);
+  });
+
+  it("위치를 모르면 기존 정보만 왼쪽에 보인다", () => {
+    const text = stripVTControlCharacters(render(<StatusBar model="claude-test" sessionCostUsd={0} />).lastFrame() ?? "");
+
+    expect(text.startsWith(" claude-test · 세션 $0.0000")).toBe(true);
+  });
+});

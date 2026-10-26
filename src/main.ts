@@ -16,6 +16,7 @@ import { createPlainUi } from "./ui/plain.js";
 import type { ChatUi } from "./ui/runOptions.js";
 import { addUsage, configDir, readUsage } from "./usageStore.js";
 import { readUserConfig, resolvePermissionMode } from "./userConfig.js";
+import { readWorkspaceInfo } from "./workspaceInfo.js";
 
 export interface CliArgs {
   resume?: string;
@@ -166,6 +167,7 @@ async function main(): Promise<number> {
       listSessions: () => loadSessionList({ cwd: process.cwd() }),
     },
     ...(args.pickResume === true ? { startupCommand: "/resume" } : {}),
+    readWorkspace: () => readWorkspaceInfo({ cwd: process.cwd() }),
     recordUsage: (costUsd) => addUsage(costUsd),
   });
   return 0;
