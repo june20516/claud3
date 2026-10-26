@@ -81,6 +81,27 @@ describe("formatEvent", () => {
     expect(text.indexOf("⏺ Edit(a.ts)")).toBeLessThan(text.indexOf("- old"));
   });
 
+  it("Edit diff 아래에 파일 경로와 삭제·추가 요약을 붙이고, 도구 줄은 흐리게 한다", () => {
+    vi.stubEnv("FORCE_COLOR", "1");
+    vi.stubEnv("NO_COLOR", "");
+    const text = formatEvent(
+      {
+        type: "tool_start",
+        toolUseId: "t1",
+        name: "Edit",
+        summary: "a.ts",
+        input: { file_path: "a.ts", old_string: "old", new_string: "new" },
+      },
+      { width: 30 },
+    );
+    vi.unstubAllEnvs();
+    const plainText = stripVTControlCharacters(text);
+
+    expect(text).toContain("\u001b[2m⏺ Edit(a.ts)");
+    expect(plainText).toContain(`    + new${" ".repeat(21)}`);
+    expect(plainText.indexOf("+ new")).toBeLessThan(plainText.indexOf("⎿ a.ts · 1줄 삭제, 1줄 추가"));
+  });
+
   it("permission_mode는 '권한 모드: <설명>' 한 줄", () => {
     expect(stripVTControlCharacters(formatEvent({ type: "permission_mode", mode: "plan" }))).toBe(
       "\n권한 모드: plan — 계획만 세우고 도구 실행 안 함\n",

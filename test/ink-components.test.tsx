@@ -250,8 +250,23 @@ describe("Transcript", () => {
     const addedLine = (lastFrame() ?? "").split("\n").find((line) => line.includes("+ new line")) ?? "";
     vi.unstubAllEnvs();
 
-    expect(addedLine).toContain("\u001b[48;5;22m");
+    expect(addedLine.startsWith("\u001b[48;5;194m")).toBe(true);
     expect(stripVTControlCharacters(addedLine)).toHaveLength(stdout.columns);
+  });
+
+  it("diff 아래에 파일 경로와 삭제·추가 요약을 보인다", () => {
+    const state = reduceTranscript(initialTranscript, {
+      type: "tool_start",
+      toolUseId: "t1",
+      name: "Edit",
+      summary: "a.ts",
+      input: { file_path: "a.ts", old_string: "old line", new_string: "new line" },
+    });
+
+    const text = plainFrame(render(<Transcript state={{ ...state, running: [] }} />).lastFrame);
+
+    expect(text).toContain("+ new line");
+    expect(text.indexOf("+ new line")).toBeLessThan(text.indexOf("⎿ a.ts · 1줄 삭제, 1줄 추가"));
   });
 
   it("tool_start 직후 도구 줄과 diff는 확정 영역에 있다", () => {

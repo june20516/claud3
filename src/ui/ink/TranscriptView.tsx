@@ -1,6 +1,6 @@
 import { Box, Static, Text, useStdout } from "ink";
 import { useMemo } from "react";
-import { formatToolDiff } from "../../diffView.js";
+import { formatDiffSummary, formatToolDiff } from "../../diffView.js";
 import { renderMarkdownLine } from "../../markdown.js";
 import { HISTORY_HEADER } from "../plain.js";
 import { columnsOf } from "./terminalSize.js";
@@ -19,12 +19,16 @@ function ToolView({ item }: { item: ToolItem }) {
   const { stdout } = useStdout();
   const width = columnsOf(stdout);
   const diff = useMemo(() => formatToolDiff(item.name, item.input, { width }), [item.name, item.input, width]);
+  // 요약의 행 번호는 그릴 때 파일을 읽어 찾으므로 한 번만 계산한다(Static이라 다시 그리지 않는다).
+  const summary = useMemo(() => formatDiffSummary(item.name, item.input), [item.name, item.input]);
+  // 도구 줄과 요약은 메시지보다 흐리게 보여 대화 흐름과 구분한다.
   return (
     <Box flexDirection="column">
-      <Text>
+      <Text dimColor>
         ⏺ {item.name}({item.summary})
       </Text>
       {diff === undefined ? null : <Text>{diff}</Text>}
+      {summary === undefined ? null : <Text dimColor>{`  ${summary}`}</Text>}
     </Box>
   );
 }

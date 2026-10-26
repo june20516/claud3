@@ -2,7 +2,7 @@ import { createInterface, emitKeypressEvents } from "node:readline";
 import { styleText } from "node:util";
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { parseInput, runCommand } from "../commands.js";
-import { formatToolDiff } from "../diffView.js";
+import { formatDiffSummary, formatToolDiff } from "../diffView.js";
 import { HISTORY_SIZE, createHistorySaver, loadHistory } from "../inputHistory.js";
 import { createMarkdownRenderer } from "../markdown.js";
 import { describePermissionMode, nextPermissionMode } from "../permissionModes.js";
@@ -21,6 +21,7 @@ import { formatQuestionPrompt, parseQuestionAnswer } from "../userQuestions.js";
 import { formatSessionTime } from "../sessionList.js";
 import type { SessionListItem } from "../sessionList.js";
 import { formatLocation } from "../workspaceInfo.js";
+import { columnsOf } from "./ink/terminalSize.js";
 import type { ChatUi, UiRunOptions } from "./runOptions.js";
 
 const PROMPT = "> ";
@@ -135,7 +136,12 @@ export function formatPlanPreview(request: PermissionRequest, plan: { text?: str
   return `\n${request.toolName}(${request.summary})\n`;
 }
 
-export function formatEvent(event: UiEvent): string {
+export interface FormatEventOptions {
+  /** 터미널 폭. 주면 diff의 바뀐 줄 배경을 폭 끝까지 채운다. */
+  width?: number;
+}
+
+export function formatEvent(event: UiEvent, { width }: FormatEventOptions = {}): string {
   switch (event.type) {
     case "session_start":
       return `${styleText("dim", `claud3 · API key(${event.apiKeySource}) · Agent SDK · ${event.model}`)}\n`;
@@ -144,8 +150,14 @@ export function formatEvent(event: UiEvent): string {
     case "text_delta":
       return event.text;
     case "tool_start": {
-      const diff = formatToolDiff(event.name, event.input);
-      return `\n⏺ ${event.name}(${event.summary})\n${diff === undefined ? "" : `${diff}\n`}`;
+      const diff = formatToolDiff(event.name, event.input, { width });
+      const summary = formatDiffSummary(event.name, event.input);
+      // 도구 줄과 요약은 메시지보다 흐리게 보여 대화 흐름과 구분한다.
+      return (
+        `\n${styleText("dim", `⏺ ${event.name}(${event.summary})`)}\n` +
+        `${diff === undefined ? "" : `${diff}\n`}` +
+        `${summary === undefined ? "" : `${styleText("dim", `  ${summary}`)}\n`}`
+      );
     }
     case "tool_end":
       return event.isError ? `${styleText("red", `  ⎿ ${event.summary}`)}\n` : "";
@@ -382,7 +394,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
           return;
         }
         write(markdown.flush());
-        write(formatEvent(event));
+        write(formatEvent(event, { width: columnsOf(output) }));
         if (event.type === "turn_result") {
           await printStatusLine(event.costUsd);
         }

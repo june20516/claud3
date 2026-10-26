@@ -3,6 +3,8 @@ import { render } from "ink-testing-library";
 import stringWidth from "string-width";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { StatusBar } from "../src/ui/ink/StatusBar.js";
+import { Transcript } from "../src/ui/ink/TranscriptView.js";
+import { initialTranscript, reduceTranscript } from "../src/ui/ink/transcript.js";
 
 // Ink(chalk)는 모듈을 불러올 때 색 지원 여부를 정하므로, 이 파일의 import보다 먼저 색을 켠다.
 const { originalForceColor } = vi.hoisted(() => {
@@ -91,5 +93,22 @@ describe("StatusBar 위치 정보", () => {
     const text = stripVTControlCharacters(render(<StatusBar model="claude-test" sessionCostUsd={0} />).lastFrame() ?? "");
 
     expect(text.startsWith(" claude-test · 세션 $0.0000")).toBe(true);
+  });
+});
+
+describe("도구 줄", () => {
+  it("도구 사용 줄과 diff 요약은 메시지보다 흐리게(dim) 보인다", () => {
+    const state = reduceTranscript(initialTranscript, {
+      type: "tool_start",
+      toolUseId: "t1",
+      name: "Edit",
+      summary: "a.ts",
+      input: { file_path: "a.ts", old_string: "old", new_string: "new" },
+    });
+
+    const frame = render(<Transcript state={{ ...state, running: [] }} />).lastFrame() ?? "";
+
+    expect(frame).toContain(`${DIM}⏺ Edit(a.ts)`);
+    expect(frame).toContain(`${DIM}  ⎿ a.ts`);
   });
 });
