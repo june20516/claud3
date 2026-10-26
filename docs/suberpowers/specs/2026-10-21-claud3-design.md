@@ -140,7 +140,7 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
 
 - 확인 결과: API 키 인증에서도 `auto`가 적용된다(init `permissionMode=auto`). 옵션을 생략하면 이 환경에서는 `default`로 시작한다. 실행 중 `setPermissionMode`가 동작하고, 다음 턴의 `system:status`·`system:init`에 바뀐 값이 실린다 (`docs/suberpowers/notes/probe-results.md` "권한 모드 확인").
 - **고르는 방법**
-  - 실행 옵션 `--permission-mode <mode>`. 주지 않으면 SDK에 넘기지 않는다(설정의 `permissions.defaultMode`, 없으면 `default`).
+  - 실행 옵션 `--permission-mode <mode>`. 주지 않으면 claud3 설정 `~/.config/claud3/config.json`(`CLAUD3_CONFIG_DIR`로 변경)의 `permissionMode`를 쓰고(추가 2026-10-26), 그것도 없으면 SDK에 넘기지 않는다(Claude Code 설정의 `permissions.defaultMode`, 없으면 `default`). claud3 설정은 Claude Code의 기본 모드를 바꾸지 않으려고 따로 둔다. 설정 파일이 깨졌거나 모드 이름이 틀리면 stderr에 `설정 무시: ...`를 출력하고 그 값을 무시한다.
   - 세션 안 `/mode`: 현재 모드(`*` 표시)와 네 선택지·설명, 마지막 줄 `바꾸려면: /mode <이름> · Shift+Tab`. `/mode <이름>`으로 바로 바꾼다.
   - Shift+Tab: `default → acceptEdits → plan → auto → default` 순서로 순환한다. 현재 모드가 목록 밖(설정의 `dontAsk` 등)이면 `default`로 간다. 권한 질문 중에는 무시하고, 턴 실행 중과 여러 줄 입력 중에는 허용한다.
   - 모드 변경은 턴 실행 중에도 된다(`/model`과 다름).

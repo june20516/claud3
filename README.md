@@ -108,7 +108,14 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | `plan` | 계획만 세우고 도구 실행 안 함 |
 | `auto` | 분류기가 판단, 애매하면 묻기 |
 
-- 시작할 때 `--permission-mode`를 생략하면 설정의 `defaultMode`를 따르고, 설정에도 없으면 `default`입니다.
+- 시작 모드는 다음 순서로 정합니다.
+  1. `--permission-mode <모드>`
+  2. claud3 설정 `~/.config/claud3/config.json`의 `permissionMode` (Claude Code에는 영향 없음)
+     ```json
+     { "permissionMode": "acceptEdits" }
+     ```
+  3. Claude Code 설정의 `permissions.defaultMode`, 그것도 없으면 `default`
+- 설정 파일의 JSON이 깨졌거나 모드 이름이 틀리면 시작할 때 `설정 무시: ...`를 출력하고 그 값을 쓰지 않습니다.
 - 세션 안에서는 `/mode <이름>` 또는 Shift+Tab으로 바꿉니다. 턴이 실행 중일 때도 바꿀 수 있습니다. `/clear`·`/resume` 후에도 모드가 유지됩니다.
 - 현재 모드는 상태 줄에 표시됩니다.
 - plan 모드에서는 Claude가 계획을 세운 뒤 계획 본문을 보여 주고 승인을 묻습니다.

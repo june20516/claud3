@@ -53,6 +53,7 @@ export const HELP_TEXT = [
   "  claud3 --model <ID>      모델 지정해 시작",
   "  claud3 --resume <ID>     세션 이어서 시작",
   "  claud3 --permission-mode <이름>  권한 모드 지정해 시작",
+  "    (기본값은 ~/.config/claud3/config.json의 permissionMode)",
   "  claud3 --plain           readline 화면으로 시작",
   "  claud3 --help · --version",
   "개발판·안정판",
