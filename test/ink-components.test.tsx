@@ -113,6 +113,7 @@ function renderApp(
     readUsage?: UiRunOptions["commandContext"]["readUsage"];
     listSessions?: UiRunOptions["commandContext"]["listSessions"];
     startupCommand?: string;
+    readWorkspace?: UiRunOptions["readWorkspace"];
   } = {},
 ) {
   const session = new FakeSession();
@@ -125,6 +126,7 @@ function renderApp(
       ...(overrides.listSessions === undefined ? {} : { listSessions: overrides.listSessions }),
     },
     recordUsage,
+    ...(overrides.readWorkspace === undefined ? {} : { readWorkspace: overrides.readWorkspace }),
   };
   const onClosed = vi.fn();
   connectSession(store, session.asSession(), options, onClosed);
@@ -881,6 +883,30 @@ describe("App", () => {
     await press(stdin, SHIFT_TAB);
 
     expect(session.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  it("상태 줄에 현재 디렉터리와 브랜치를 보이고, 턴이 끝나면 다시 읽는다", async () => {
+    let branch = "main";
+    const readWorkspace = vi.fn(async () => ({ directory: "~/repo", branch }));
+    const { session, frame } = renderApp({ readWorkspace });
+
+    await vi.waitFor(() => expect(frame()).toContain("~/repo  main"));
+    branch = "feat/x";
+    session.emit({ type: "turn_result", costUsd: 0.01, totalCostUsd: 0.01, isError: false });
+
+    await vi.waitFor(() => expect(frame()).toContain("~/repo  feat/x"));
+    expect(readWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it("위치를 읽지 못해도 화면은 그대로 동작한다", async () => {
+    const { frame } = renderApp({
+      readWorkspace: async () => {
+        throw new Error("git 없음");
+      },
+    });
+
+    await vi.waitFor(() => expect(frame()).toContain("claude-test"));
+    expect(frame()).not.toContain("git 없음");
   });
 
   describe("세션 고르기", () => {

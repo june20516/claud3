@@ -18,6 +18,7 @@ import type {
 import { remainingCreditUsd } from "../../usageStore.js";
 import { formatAnswerSummary } from "../../userQuestions.js";
 import type { SessionListItem } from "../../sessionList.js";
+import type { WorkspaceInfo } from "../../workspaceInfo.js";
 import { formatPlanPreview } from "../plain.js";
 import type { UiRunOptions } from "../runOptions.js";
 import { InputBox } from "./InputBox.js";
@@ -45,6 +46,8 @@ export interface InkUiSnapshot {
   picker?: { id: number; items: SessionListItem[] };
   /** 시작 잔액을 읽기 전에는 없다. */
   remainingCreditUsd?: number;
+  /** 상태 줄의 디렉터리·브랜치. 읽기 전이나 읽지 못하면 없다. */
+  workspace?: WorkspaceInfo;
 }
 
 export interface QuestionDialogState {
@@ -156,6 +159,10 @@ export class InkUiStore {
     this.update({ remainingCreditUsd: amountUsd });
   }
 
+  setWorkspace(workspace: WorkspaceInfo): void {
+    this.update({ workspace });
+  }
+
   private askPermission(request: PermissionRequest): Promise<PermissionDecision> {
     const { signal, plan } = request;
     if (signal?.aborted) {
@@ -230,12 +237,22 @@ export class InkUiStore {
 export function connectSession(
   store: InkUiStore,
   session: Session,
-  { commandContext, recordUsage }: UiRunOptions,
+  { commandContext, recordUsage, readWorkspace }: UiRunOptions,
   onClosed: () => void,
 ): void {
+  // 위치는 보조 정보라 읽지 못해도 알리지 않고 이전 값을 둔다.
+  const refreshWorkspace = (): void => {
+    readWorkspace?.().then(
+      (workspace) => store.setWorkspace(workspace),
+      () => undefined,
+    );
+  };
+
   const handleEvent = async (event: UiEvent): Promise<void> => {
     store.applyEvent(event);
     if (event.type === "turn_result") {
+      // Claude가 턴 중에 브랜치를 바꿨을 수 있다.
+      refreshWorkspace();
       try {
         store.setRemainingCredit(remainingCreditUsd(await recordUsage(event.costUsd)));
       } catch (error) {
@@ -254,6 +271,7 @@ export function connectSession(
       .catch((error: unknown) => store.addNotice("error", `오류: ${errorText(error)}`));
   });
 
+  refreshWorkspace();
   commandContext.readUsage().then(
     (snapshot) => {
       // 그새 턴이 끝나 더 새 값이 들어왔으면 덮어쓰지 않는다.
@@ -283,6 +301,7 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
     question,
     picker,
     remainingCreditUsd: remaining,
+    workspace,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const lastIdleInterruptAt = useRef(0);
   // Static은 레이아웃 밖(absolute)이므로 입력창의 top이 곧 동적 출력 맨 위에서 센 행이다.
@@ -440,6 +459,7 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
         permissionMode={session.currentPermissionMode ?? transcript.permissionMode}
         sessionCostUsd={session.totalCostUsd}
         remainingCreditUsd={remaining}
+        workspace={workspace}
       />
     </Box>
   );

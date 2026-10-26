@@ -460,6 +460,7 @@ interface RunUiOverrides {
   readUsage?: CommandContext["readUsage"];
   listSessions?: CommandContext["listSessions"];
   startupCommand?: string;
+  readWorkspace?: UiRunOptions["readWorkspace"];
 }
 
 function createRunUi(overrides: RunUiOverrides = {}, terminal = false) {
@@ -481,6 +482,7 @@ function createRunUi(overrides: RunUiOverrides = {}, terminal = false) {
     commandContext,
     recordUsage,
     ...(overrides.startupCommand === undefined ? {} : { startupCommand: overrides.startupCommand }),
+    ...(overrides.readWorkspace === undefined ? {} : { readWorkspace: overrides.readWorkspace }),
   });
   const plain = (): string => stripVTControlCharacters(state.written);
   return { input, state, plain, session, recordUsage, running, ui };
@@ -527,6 +529,29 @@ describe("createPlainUi 세션 고르기", () => {
     input.write("2\n");
 
     await vi.waitFor(() => expect(session.replace).toHaveBeenCalledWith("223e4567-e89b-12d3-a456-426614174000"));
+  });
+});
+
+describe("createPlainUi 상태 줄 위치", () => {
+  it("턴이 끝날 때 상태 줄 앞에 디렉터리와 브랜치를 보인다", async () => {
+    const { plain, session } = createRunUi({ readWorkspace: async () => ({ directory: "~/repo", branch: "main" }) });
+
+    session.emit({ type: "turn_result", costUsd: 0.01, totalCostUsd: 0.01, isError: false });
+
+    await vi.waitFor(() => expect(plain()).toMatch(/~\/repo \(main\) · claude-test/));
+  });
+
+  it("위치를 읽지 못하면 기존 상태 줄만 보인다", async () => {
+    const { plain, session } = createRunUi({
+      readWorkspace: async () => {
+        throw new Error("git 없음");
+      },
+    });
+
+    session.emit({ type: "turn_result", costUsd: 0.01, totalCostUsd: 0.01, isError: false });
+
+    await vi.waitFor(() => expect(plain()).toContain("claude-test · 세션"));
+    expect(plain()).not.toContain("git 없음");
   });
 });
 
