@@ -20,6 +20,7 @@ import {
   parsePlanDecision,
 } from "../src/ui/plain.js";
 import type { UiRunOptions } from "../src/ui/runOptions.js";
+import { loadHistory } from "../src/inputHistory.js";
 
 describe("parseDecision", () => {
   it("y/yes는 allow, n/no는 deny, a/always는 always (대소문자 무시)", () => {
@@ -322,9 +323,10 @@ function createTempDir(): string {
   return mkdtempSync(join(tmpdir(), "claud3-ui-"));
 }
 
+/** 기록 파일의 입력들(JSON 줄을 풀어서). */
 function readLines(path: string): string[] {
   try {
-    return readFileSync(path, "utf8").split("\n").filter((line) => line !== "");
+    return loadHistory(path);
   } catch {
     return [];
   }

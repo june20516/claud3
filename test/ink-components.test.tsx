@@ -660,8 +660,29 @@ describe("InputBox", () => {
     await press(stdin, ENTER);
 
     expect(onSubmit).toHaveBeenCalledWith("첫 줄\n둘째 줄");
-    // 기록 파일은 줄 단위라 여러 줄 입력은 기록하지 않는다.
-    expect(onHistoryChange).not.toHaveBeenCalled();
+    expect(onHistoryChange).toHaveBeenLastCalledWith(["첫 줄\n둘째 줄"]);
+  });
+
+  it("여러 줄 입력도 ↑로 다시 불러와 그대로 보낼 수 있다", async () => {
+    const { stdin, onSubmit, frame } = renderInput(["a\nb"]);
+
+    await press(stdin, UP);
+    expect(frame()).toContain("> a\nb");
+    await press(stdin, ENTER);
+
+    expect(onSubmit).toHaveBeenCalledWith("a\nb");
+  });
+
+  it("줄 끝 \\로 이어 받은 입력은 줄마다가 아니라 완성된 입력 하나로 기록한다", async () => {
+    const { stdin, onHistoryChange } = renderInput();
+
+    await press(stdin, "a\\");
+    await press(stdin, ENTER);
+    await press(stdin, "b");
+    await press(stdin, ENTER);
+
+    expect(onHistoryChange).toHaveBeenCalledTimes(1);
+    expect(onHistoryChange).toHaveBeenLastCalledWith(["a\nb"]);
   });
 
   it("Option+Enter도 줄을 바꾼다", async () => {
