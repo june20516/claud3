@@ -1,7 +1,8 @@
 import type { CanUseTool, ModelInfo, Options, PermissionMode, PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "./asyncQueue.js";
 import { createEventMapper, summarizeToolInput } from "./events.js";
-import type { PermissionPrompter, PermissionRequest, UiEvent } from "./types.js";
+import type { PermissionPrompter, PermissionRequest, UiEvent, UserQuestionPrompter } from "./types.js";
+import { ASK_USER_QUESTION_TOOL, parseUserQuestions } from "./userQuestions.js";
 
 /** Session이 쓰는 query 기능만 추린 타입. SDK의 Query도 이 타입을 만족한다. */
 export type SessionQuery = AsyncIterable<SDKMessage> & {
@@ -20,11 +21,16 @@ export interface SessionDeps {
   resume?: string;
   /** resume한 세션의 이전 대화를 화면 줄로 읽는다. 없으면 이전 대화를 보이지 않는다. */
   loadHistory?: (sessionId: string) => Promise<string[]>;
+  /** AskUserQuestion 도구의 질문을 사용자에게 묻는다. 없으면 그 도구를 거부한다. */
+  askUser?: UserQuestionPrompter;
 }
 
 const DENIED_MESSAGE = "사용자가 거부했습니다";
 const PLAN_DENIED_MESSAGE = "사용자가 계획을 승인하지 않았습니다. 계획을 계속 다듬어 주세요";
 const EXIT_PLAN_MODE_TOOL = "ExitPlanMode";
+const QUESTION_UNANSWERED_MESSAGE = "사용자가 질문에 답하지 않았습니다";
+const QUESTION_INVALID_MESSAGE = "질문 형식을 읽지 못했습니다";
+const QUESTION_UNSUPPORTED_MESSAGE = "이 화면에서는 질문에 답할 수 없습니다";
 const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
 const PENDING_CANCELLED_MESSAGE = "재연결로 대기 중 입력이 취소되었습니다";
 
@@ -317,7 +323,27 @@ export class Session {
     void this.close();
   }
 
+  /** 질문을 묻고 답을 updatedInput.answers로 돌려준다(SDK 문서의 AskUserQuestion 처리 방식). */
+  private async answerQuestions(input: Record<string, unknown>, signal: AbortSignal): Promise<PermissionResult> {
+    const { askUser } = this.deps;
+    if (!askUser) {
+      return { behavior: "deny", message: QUESTION_UNSUPPORTED_MESSAGE };
+    }
+    const questions = parseUserQuestions(input);
+    if (questions === undefined) {
+      return { behavior: "deny", message: QUESTION_INVALID_MESSAGE };
+    }
+    const answers = await askUser({ questions, signal });
+    if (answers === undefined) {
+      return { behavior: "deny", message: QUESTION_UNANSWERED_MESSAGE };
+    }
+    return { behavior: "allow", updatedInput: { ...input, answers } };
+  }
+
   private readonly canUseTool: CanUseTool = async (toolName, input, { signal }): Promise<PermissionResult> => {
+    if (toolName === ASK_USER_QUESTION_TOOL) {
+      return this.answerQuestions(input, signal);
+    }
     if (this.alwaysAllowedTools.has(toolName)) {
       return { behavior: "allow", updatedInput: input };
     }

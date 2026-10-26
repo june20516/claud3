@@ -49,6 +49,8 @@ export const HELP_TEXT = [
   "권한 질문",
   "  y 이번만 허용 · n 거부 · a 이 도구는 세션 동안 항상 허용",
   "  계획 승인(plan 모드): y 승인 · e 승인+편집 자동 허용 · n 계속 계획",
+  "Claude의 질문",
+  "  ↑/↓·Enter 또는 숫자로 답 · 복수 선택은 Space·숫자 체크 · 직접 입력 · Esc 취소",
   "실행 옵션 (터미널에서)",
   "  claud3 --model <ID>      모델 지정해 시작",
   "  claud3 --resume <ID>     세션 이어서 시작",

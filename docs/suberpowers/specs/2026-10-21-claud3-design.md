@@ -188,6 +188,18 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
 - 기록은 SDK `getSessionMessages(sessionId)`로 로컬 세션 파일에서 읽는다(API 호출 없음). `sessionHistory`가 화면과 같은 모양의 줄로 바꾼다: 사용자 입력은 `> `, 응답은 마크다운, 도구 호출은 `⏺ 이름(요약)`, 블록 사이는 빈 줄. thinking, 도구 결과, 서브에이전트 메시지, 메타·compact 요약, 슬래시 명령 기록은 뺀다. 100줄은 터미널 줄바꿈 전 논리 줄 기준이다.
 - `session`은 주입받은 `loadHistory`로 기록을 읽어 SDK 메시지보다 먼저 `history` 이벤트로 보낸다. 연결이 끊겨 다시 붙을 때는 보내지 않는다. 읽지 못하면 `error` 이벤트로 알리고 대화는 계속한다.
 
+### AskUserQuestion 처리 (추가 2026-10-26, 3단계 이후)
+
+- 이전에는 AskUserQuestion도 일반 도구처럼 y/a/n 권한 질문을 거쳐, 허용해도 답이 전달되지 않았다.
+- SDK 문서(code.claude.com/docs/en/agent-sdk/user-input) 방식대로 `canUseTool`에서 `toolName === "AskUserQuestion"`이면 권한 질문 대신 화면의 `asker`(`UserQuestionPrompter`)로 묻고 `{ behavior: "allow", updatedInput: { ...input, answers } }`를 돌려준다. `answers`는 질문 문장 → 고른 label(복수 선택은 `", "`로 이음) 또는 직접 쓴 답이다.
+- 사용자가 취소하면 `deny`("사용자가 질문에 답하지 않았습니다"), 입력 형식이 맞지 않으면 묻지 않고 `deny`, 화면이 `asker`를 주지 않으면 `deny`.
+- 화면은 권한 질문과 같은 대기열로 질문을 하나씩 띄운다.
+  - plain: 질문과 번호 붙은 선택지를 출력하고 `답 › `으로 받는다. 번호(복수 선택은 쉼표로 여러 개)는 label로 바꾸고, 그 밖의 글은 직접 쓴 답이다. 빈 답은 다시 묻는다.
+  - Ink: 권한 창 자리에 질문 창(`QuestionDialog`). ↑/↓·Enter·숫자로 고르고, 복수 선택은 Space·숫자로 체크한다. 마지막 "직접 입력"은 아래 입력창으로 답을 받는다(한글 IME 커서를 입력창이 맞추므로). 답이 끝나면 `header: 답` 요약을 대화 영역에 남긴다.
+  - Esc는 취소(직접 입력 중이면 선택지로), Ctrl+C는 취소하고 턴 중단.
+- 선택지의 `preview`(`toolConfig.askUserQuestion.previewFormat`)는 쓰지 않는다.
+- 도구 줄 요약은 첫 질문 문장(여럿이면 `질문 N개: …`)이다.
+
 ## 7. 자기 개발 (self-hosting)
 
 1단계가 끝나면 2·3단계는 `claud3` 자신으로 개발한다. 개발 중 깨진 빌드가 개발 도구 자체를 망가뜨리지 않도록 다음을 지킨다.

@@ -19,6 +19,18 @@ function stringField(input: Record<string, unknown>, key: string): string | unde
   return typeof value === "string" ? value : undefined;
 }
 
+function summarizeQuestions(questions: unknown): string {
+  if (!Array.isArray(questions)) {
+    return "";
+  }
+  const [first]: unknown[] = questions;
+  const firstQuestion =
+    typeof first === "object" && first !== null && "question" in first && typeof first.question === "string"
+      ? first.question
+      : "";
+  return questions.length > 1 ? `질문 ${questions.length}개: ${firstQuestion}` : firstQuestion;
+}
+
 export function summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
     case "Bash":
@@ -30,6 +42,8 @@ export function summarizeToolInput(toolName: string, input: Record<string, unkno
     case "Grep":
     case "Glob":
       return truncate(stringField(input, "pattern") ?? "");
+    case "AskUserQuestion":
+      return truncate(summarizeQuestions(input.questions));
     default:
       return truncate(JSON.stringify(input));
   }

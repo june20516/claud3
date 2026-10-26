@@ -1,7 +1,7 @@
 import type { CanUseTool, ModelInfo, Options, PermissionMode, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { Session, type QueryFn } from "../src/session.js";
-import type { PermissionPrompter, UiEvent } from "../src/types.js";
+import type { PermissionPrompter, UiEvent, UserQuestionPrompter } from "../src/types.js";
 
 interface FakeCall {
   options: Options;
@@ -91,6 +91,7 @@ function createSession(
     resume?: string;
     permissionMode?: PermissionMode;
     loadHistory?: (sessionId: string) => Promise<string[]>;
+    askUser?: UserQuestionPrompter;
   } = {},
 ) {
   const sdk = new FakeSdk();
@@ -101,6 +102,7 @@ function createSession(
     prompter: options.prompter ?? (async () => "allow"),
     resume: options.resume,
     ...(options.loadHistory === undefined ? {} : { loadHistory: options.loadHistory }),
+    ...(options.askUser === undefined ? {} : { askUser: options.askUser }),
   });
   session.onEvent((event) => events.push(event));
   return { sdk, session, events };
@@ -466,6 +468,71 @@ describe("Session", () => {
     await session.replace();
     await canUseTool(sdk.calls[1]!)("Edit", { file_path: "/b" }, toolOptions);
     expect(prompter).toHaveBeenCalledTimes(1);
+  });
+
+  describe("AskUserQuestion", () => {
+    const questionInput = {
+      questions: [
+        {
+          question: "어떤 방식으로 할까요?",
+          header: "방식",
+          multiSelect: false,
+          options: [
+            { label: "A안", description: "빠름" },
+            { label: "B안", description: "안전함" },
+          ],
+        },
+      ],
+    };
+
+    it("권한 질문 대신 askUser로 묻고, 답을 updatedInput.answers로 돌려준다", async () => {
+      const prompter = vi.fn<PermissionPrompter>(async () => "allow");
+      const askUser = vi.fn<UserQuestionPrompter>(async () => ({ "어떤 방식으로 할까요?": "B안" }));
+      const { sdk, session } = createSession({ prompter, askUser });
+      session.start();
+      await vi.waitFor(() => expect(sdk.calls).toHaveLength(1));
+
+      const result = await canUseTool(sdk.calls[0]!)("AskUserQuestion", questionInput, toolOptions);
+
+      expect(result).toEqual({
+        behavior: "allow",
+        updatedInput: { ...questionInput, answers: { "어떤 방식으로 할까요?": "B안" } },
+      });
+      expect(askUser).toHaveBeenCalledWith({ questions: questionInput.questions, signal: toolOptions.signal });
+      expect(prompter).not.toHaveBeenCalled();
+    });
+
+    it("사용자가 답하지 않으면 거부한다", async () => {
+      const { sdk, session } = createSession({ askUser: async () => undefined });
+      session.start();
+      await vi.waitFor(() => expect(sdk.calls).toHaveLength(1));
+
+      const result = await canUseTool(sdk.calls[0]!)("AskUserQuestion", questionInput, toolOptions);
+
+      expect(result).toEqual({ behavior: "deny", message: "사용자가 질문에 답하지 않았습니다" });
+    });
+
+    it("질문 형식을 읽지 못하면 묻지 않고 거부한다", async () => {
+      const askUser = vi.fn<UserQuestionPrompter>(async () => ({}));
+      const { sdk, session } = createSession({ askUser });
+      session.start();
+      await vi.waitFor(() => expect(sdk.calls).toHaveLength(1));
+
+      const result = await canUseTool(sdk.calls[0]!)("AskUserQuestion", { questions: "x" }, toolOptions);
+
+      expect(result).toEqual({ behavior: "deny", message: "질문 형식을 읽지 못했습니다" });
+      expect(askUser).not.toHaveBeenCalled();
+    });
+
+    it("askUser가 없으면 거부한다", async () => {
+      const { sdk, session } = createSession();
+      session.start();
+      await vi.waitFor(() => expect(sdk.calls).toHaveLength(1));
+
+      const result = await canUseTool(sdk.calls[0]!)("AskUserQuestion", questionInput, toolOptions);
+
+      expect(result).toEqual({ behavior: "deny", message: "이 화면에서는 질문에 답할 수 없습니다" });
+    });
   });
 
   describe("이전 대화 불러오기", () => {

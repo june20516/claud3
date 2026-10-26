@@ -5,12 +5,23 @@ import type { CommandContext } from "../../commands.js";
 import { parseInput, runCommand } from "../../commands.js";
 import { nextPermissionMode } from "../../permissionModes.js";
 import type { Session } from "../../session.js";
-import type { PermissionDecision, PermissionPrompter, PermissionRequest, UiEvent } from "../../types.js";
+import type {
+  PermissionDecision,
+  PermissionPrompter,
+  PermissionRequest,
+  UiEvent,
+  UserQuestion,
+  UserQuestionAnswers,
+  UserQuestionPrompter,
+  UserQuestionRequest,
+} from "../../types.js";
 import { remainingCreditUsd } from "../../usageStore.js";
+import { formatAnswerSummary } from "../../userQuestions.js";
 import { formatPlanPreview } from "../plain.js";
 import type { UiRunOptions } from "../runOptions.js";
 import { InputBox } from "./InputBox.js";
 import { PermissionDialog } from "./PermissionDialog.js";
+import { QuestionDialog } from "./QuestionDialog.js";
 import { StatusBar } from "./StatusBar.js";
 import { Transcript } from "./TranscriptView.js";
 import type { NoticeTone, TranscriptState } from "./transcript.js";
@@ -26,8 +37,20 @@ export interface InkUiSnapshot {
   transcript: TranscriptState;
   /** 지금 떠 있는 권한·계획 질문. 나머지 요청은 차례를 기다린다. id는 질문마다 새 대화상자를 그리는 key다. */
   dialog?: { id: number; request: PermissionRequest };
+  /** 지금 묻는 AskUserQuestion 질문. 권한 질문과 같은 대기열로 하나씩 뜬다. */
+  question?: QuestionDialogState;
   /** 시작 잔액을 읽기 전에는 없다. */
   remainingCreditUsd?: number;
+}
+
+export interface QuestionDialogState {
+  /** 질문 요청마다 새로 매긴다. index와 함께 질문 창의 key가 된다. */
+  id: number;
+  questions: UserQuestion[];
+  /** 지금 묻는 질문의 위치. */
+  index: number;
+  /** 직접 입력 중이면 입력창이 답을 받는다. */
+  typing: boolean;
 }
 
 /**
@@ -38,7 +61,11 @@ export class InkUiStore {
   private snapshot: InkUiSnapshot = { transcript: initialTranscript };
   private readonly listeners = new Set<() => void>();
   private answerDialog: ((decision: PermissionDecision) => void) | undefined;
-  private permissionQueue: Promise<unknown> = Promise.resolve();
+  /** 떠 있는 질문 창을 닫는다. 취소면 undefined를 넘긴다. */
+  private closeQuestion: ((answers: UserQuestionAnswers | undefined) => void) | undefined;
+  private questionAnswers: UserQuestionAnswers = {};
+  /** 권한 질문과 AskUserQuestion은 화면 하나를 같이 쓰므로 한 대기열로 차례를 정한다. */
+  private dialogQueue: Promise<unknown> = Promise.resolve();
   private nextDialogId = 0;
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -49,15 +76,40 @@ export class InkUiStore {
   readonly getSnapshot = (): InkUiSnapshot => this.snapshot;
 
   /** 동시에 온 요청은 대기열에 넣고 하나씩 대화상자로 묻는다. */
-  readonly prompter: PermissionPrompter = (request) => {
-    const decision = this.permissionQueue.then(() => this.askPermission(request));
-    this.permissionQueue = decision.catch(() => undefined);
-    return decision;
-  };
+  readonly prompter: PermissionPrompter = (request) => this.enqueue(() => this.askPermission(request));
+
+  readonly asker: UserQuestionPrompter = (request) => this.enqueue(() => this.askQuestions(request));
 
   /** 떠 있는 대화상자에 답한다. 없으면 무시한다. */
   answer(decision: PermissionDecision): void {
     this.answerDialog?.(decision);
+  }
+
+  /** 지금 질문의 답을 기록하고 다음 질문으로 넘어간다. 마지막 질문이면 답을 돌려준다. */
+  answerQuestion(answer: string): void {
+    const { question } = this.snapshot;
+    const current = question?.questions[question.index];
+    if (question === undefined || current === undefined) {
+      return;
+    }
+    this.questionAnswers = { ...this.questionAnswers, [current.question]: answer };
+    const nextIndex = question.index + 1;
+    if (nextIndex < question.questions.length) {
+      this.update({ question: { ...question, index: nextIndex, typing: false } });
+      return;
+    }
+    this.closeQuestion?.(this.questionAnswers);
+  }
+
+  cancelQuestion(): void {
+    this.closeQuestion?.(undefined);
+  }
+
+  setQuestionTyping(typing: boolean): void {
+    const { question } = this.snapshot;
+    if (question !== undefined) {
+      this.update({ question: { ...question, typing } });
+    }
   }
 
   applyEvent(event: UiEvent): void {
@@ -103,6 +155,40 @@ export class InkUiStore {
         transcript = addNotice(transcript, "info", formatPlanPreview(request, plan).replace(/^\n+|\n+$/g, ""));
       }
       this.update({ transcript, dialog: { id: this.nextDialogId++, request } });
+    });
+  }
+
+  private enqueue<T>(askNext: () => Promise<T>): Promise<T> {
+    const result = this.dialogQueue.then(askNext);
+    this.dialogQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  private askQuestions({ questions, signal }: UserQuestionRequest): Promise<UserQuestionAnswers | undefined> {
+    if (signal?.aborted) {
+      return Promise.resolve(undefined);
+    }
+    return new Promise((resolve) => {
+      const close = (answers: UserQuestionAnswers | undefined): void => {
+        signal?.removeEventListener("abort", onAbort);
+        this.closeQuestion = undefined;
+        this.questionAnswers = {};
+        // 답은 대화 영역에 남겨 나중에 무엇을 골랐는지 볼 수 있게 한다.
+        const transcript =
+          answers === undefined
+            ? this.snapshot.transcript
+            : addNotice(this.snapshot.transcript, "info", formatAnswerSummary(questions, answers));
+        this.update({ transcript, question: undefined });
+        resolve(answers);
+      };
+      const onAbort = (): void => close(undefined);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      this.closeQuestion = close;
+      this.questionAnswers = {};
+      this.update({
+        transcript: commitStreaming(this.snapshot.transcript),
+        question: { id: this.nextDialogId++, questions, index: 0, typing: false },
+      });
     });
   }
 
@@ -166,7 +252,12 @@ export interface AppProps {
 
 /** 대화, 대화상자, 입력창, 상태 줄을 배치하고 화면 전체 키(Esc·Ctrl+C·Shift+Tab)를 처리한다. Ctrl+D는 InputBox가 받는다. */
 export function App({ store, session, commandContext, initialHistory, saveHistory }: AppProps) {
-  const { transcript, dialog, remainingCreditUsd: remaining } = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const {
+    transcript,
+    dialog,
+    question,
+    remainingCreditUsd: remaining,
+  } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const lastIdleInterruptAt = useRef(0);
   // Static은 레이아웃 밖(absolute)이므로 입력창의 top이 곧 동적 출력 맨 위에서 센 행이다.
   const inputBoxRef = useRef<DOMElement>(null);
@@ -177,8 +268,18 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
     store.addNotice("dim", "(중단됨)");
   };
 
+  const cancelQuestionAndInterrupt = (): void => {
+    store.cancelQuestion();
+    void session.interrupt();
+  };
+
   // InputBox가 받은 Ctrl+C. 여러 줄 입력 취소는 InputBox가 이미 처리했다.
   const handleInterrupt = (): void => {
+    // 질문의 직접 입력 중이면 대화상자의 Ctrl+C처럼 질문을 취소하고 턴을 중단한다.
+    if (store.getSnapshot().question !== undefined) {
+      cancelQuestionAndInterrupt();
+      return;
+    }
     if (session.isBusy) {
       interruptTurn();
       return;
@@ -198,6 +299,10 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
     if (text.trim() === "") {
       return;
     }
+    if (store.getSnapshot().question?.typing === true) {
+      store.answerQuestion(text.trim());
+      return;
+    }
     store.addUserInput(text);
     const parsed = parseInput(text);
     if (parsed.kind === "prompt") {
@@ -212,10 +317,18 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
   // 대화상자가 떠 있는 동안 Esc·단축키는 PermissionDialog가 받는다.
   // 한 청크의 여러 키는 렌더 없이 연달아 오므로 대화상자 여부는 store에서 바로 읽는다.
   useInput((input, key) => {
-    if (store.getSnapshot().dialog !== undefined) {
+    const snapshot = store.getSnapshot();
+    if (snapshot.dialog !== undefined) {
       if (key.ctrl && input === "c") {
         store.answer("deny");
         void session.interrupt();
+      }
+      return;
+    }
+    // 질문 창의 키는 QuestionDialog가 받는다. 직접 입력 중의 Ctrl+C는 InputBox가 받아 handleInterrupt로 온다.
+    if (snapshot.question !== undefined) {
+      if (key.ctrl && input === "c" && !snapshot.question.typing) {
+        cancelQuestionAndInterrupt();
       }
       return;
     }
@@ -240,10 +353,25 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
           />
         </Box>
       )}
+      {question === undefined ? null : (
+        <Box marginTop={1}>
+          <QuestionDialog
+            key={`${question.id}-${question.index}`}
+            question={question.questions[question.index] ?? question.questions[0]!}
+            index={question.index}
+            total={question.questions.length}
+            typing={question.typing}
+            onAnswer={(answer) => store.answerQuestion(answer)}
+            onStartTyping={() => store.setQuestionTyping(true)}
+            onStopTyping={() => store.setQuestionTyping(false)}
+            onCancel={() => store.cancelQuestion()}
+          />
+        </Box>
+      )}
       <Box ref={inputBoxRef} marginTop={1}>
         <InputBox
           originRow={inputBoxMetrics.hasMeasured ? inputBoxMetrics.top : undefined}
-          isActive={dialog === undefined}
+          isActive={dialog === undefined && (question === undefined || question.typing)}
           initialHistory={initialHistory}
           onSubmit={submit}
           onInterrupt={handleInterrupt}

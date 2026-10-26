@@ -27,6 +27,7 @@ export function createInkUi({ stdin, stdout, historyFile }: InkUiOptions): ChatU
 
   return {
     prompter: store.prompter,
+    asker: store.asker,
     run: (session, options) =>
       new Promise((resolve) => {
         // Ctrl+C는 App이 직접 처리한다(질문 중 거부, 턴 중단, 두 번 눌러 종료).

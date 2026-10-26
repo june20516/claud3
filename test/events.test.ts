@@ -23,6 +23,12 @@ function mapAll(messages: SDKMessage[], initialTotalUsd?: number): UiEvent[] {
 }
 
 describe("summarizeToolInput", () => {
+  it("AskUserQuestion은 질문 수와 첫 질문을 보인다", () => {
+    const questions = [{ question: "어떤 방식으로 할까요?" }, { question: "둘째?" }];
+    expect(summarizeToolInput("AskUserQuestion", { questions })).toBe("질문 2개: 어떤 방식으로 할까요?");
+    expect(summarizeToolInput("AskUserQuestion", { questions: [questions[0]] })).toBe("어떤 방식으로 할까요?");
+  });
+
   it("Bash는 command 첫 줄", () => {
     expect(summarizeToolInput("Bash", { command: "npm test\necho hi" })).toBe("npm test");
   });

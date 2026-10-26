@@ -5,11 +5,12 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { render } from "ink-testing-library";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "../src/session.js";
-import type { PermissionDecision, PermissionRequest, UiEvent } from "../src/types.js";
+import type { PermissionDecision, PermissionRequest, UiEvent, UserQuestion } from "../src/types.js";
 import type { UsageSnapshot } from "../src/usageStore.js";
 import { App, InkUiStore, connectSession } from "../src/ui/ink/App.js";
 import { InputBox, inputCursorOffset } from "../src/ui/ink/InputBox.js";
 import { PermissionDialog } from "../src/ui/ink/PermissionDialog.js";
+import { QuestionDialog } from "../src/ui/ink/QuestionDialog.js";
 import { StatusBar } from "../src/ui/ink/StatusBar.js";
 import { Transcript } from "../src/ui/ink/TranscriptView.js";
 import { createInkUi } from "../src/ui/ink/index.js";
@@ -25,6 +26,28 @@ const DOWN = "\u001b[B";
 const SHIFT_TAB = "\u001b[Z";
 const CTRL_C = "\u0003";
 const CTRL_D = "\u0004";
+const SPACE = " ";
+
+const SINGLE_QUESTION: UserQuestion = {
+  question: "어떤 방식으로 할까요?",
+  header: "방식",
+  multiSelect: false,
+  options: [
+    { label: "A안", description: "빠름" },
+    { label: "B안", description: "안전함" },
+  ],
+};
+
+const MULTI_QUESTION: UserQuestion = {
+  question: "어떤 기능을 켤까요?",
+  header: "기능",
+  multiSelect: true,
+  options: [
+    { label: "로그", description: "기록" },
+    { label: "알림", description: "통지" },
+    { label: "통계", description: "집계" },
+  ],
+};
 
 type Frame = () => string | undefined;
 
@@ -233,6 +256,93 @@ describe("Transcript", () => {
     const { lastFrame } = render(<Transcript state={state} />);
 
     expect(plainFrame(lastFrame)).toContain("첫 줄\n둘째 줄\n\n⏺ Bash(ls)\n  ⎿ 실패");
+  });
+});
+
+describe("QuestionDialog", () => {
+  function renderQuestion(question: UserQuestion, typing = false) {
+    const onAnswer = vi.fn((_answer: string) => undefined);
+    const onStartTyping = vi.fn();
+    const onStopTyping = vi.fn();
+    const onCancel = vi.fn();
+    const view = render(
+      <QuestionDialog
+        question={question}
+        index={0}
+        total={2}
+        typing={typing}
+        onAnswer={onAnswer}
+        onStartTyping={onStartTyping}
+        onStopTyping={onStopTyping}
+        onCancel={onCancel}
+      />,
+    );
+    return { ...view, onAnswer, onStartTyping, onStopTyping, onCancel, frame: () => plainFrame(view.lastFrame) };
+  }
+
+  it("질문 머리줄, 번호 붙은 선택지와 설명, 직접 입력을 보인다", () => {
+    const text = renderQuestion(SINGLE_QUESTION).frame();
+
+    expect(text).toContain("[1/2 방식] 어떤 방식으로 할까요?");
+    expect(text).toContain("❯ 1. A안 — 빠름");
+    expect(text).toContain("  2. B안 — 안전함");
+    expect(text).toContain("  3. 직접 입력");
+  });
+
+  it("단일 선택: 숫자 키는 바로 답하고, ↓·Enter는 고른 선택지로 답한다", async () => {
+    const digit = renderQuestion(SINGLE_QUESTION);
+    await press(digit.stdin, "2");
+    expect(digit.onAnswer).toHaveBeenCalledWith("B안");
+
+    const arrow = renderQuestion(SINGLE_QUESTION);
+    await press(arrow.stdin, DOWN);
+    await press(arrow.stdin, ENTER);
+    expect(arrow.onAnswer).toHaveBeenCalledWith("B안");
+  });
+
+  it("복수 선택: Space·숫자로 체크하고 Enter는 체크한 것을 선택지 순서로 잇는다", async () => {
+    const { stdin, onAnswer, frame } = renderQuestion(MULTI_QUESTION);
+
+    await press(stdin, SPACE);
+    await press(stdin, "3");
+    expect(frame()).toContain("[x] 1. 로그");
+    expect(frame()).toContain("[x] 3. 통계");
+    expect(frame()).toContain("[ ] 2. 알림");
+    await press(stdin, ENTER);
+
+    expect(onAnswer).toHaveBeenCalledWith("로그, 통계");
+  });
+
+  it("복수 선택에서 아무것도 체크하지 않고 Enter면 고른 선택지 하나로 답한다", async () => {
+    const { stdin, onAnswer } = renderQuestion(MULTI_QUESTION);
+
+    await press(stdin, DOWN);
+    await press(stdin, ENTER);
+
+    expect(onAnswer).toHaveBeenCalledWith("알림");
+  });
+
+  it("직접 입력에서 Enter는 입력 모드로 바꾸고, Esc는 취소한다", async () => {
+    const typing = renderQuestion(SINGLE_QUESTION);
+    await press(typing.stdin, "3");
+    expect(typing.onStartTyping).toHaveBeenCalled();
+    expect(typing.onAnswer).not.toHaveBeenCalled();
+
+    const cancel = renderQuestion(SINGLE_QUESTION);
+    await press(cancel.stdin, ESCAPE);
+    expect(cancel.onCancel).toHaveBeenCalled();
+  });
+
+  it("입력 모드에서는 안내를 보이고, 숫자 키는 무시하며 Esc는 선택지로 돌아간다", async () => {
+    const { stdin, onAnswer, onStopTyping, onCancel, frame } = renderQuestion(SINGLE_QUESTION, true);
+
+    expect(frame()).toContain("입력창에 답을 쓰고 Enter");
+    await press(stdin, "1");
+    await press(stdin, ESCAPE);
+
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(onStopTyping).toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });
 
@@ -610,6 +720,95 @@ describe("App", () => {
     await press(stdin, SHIFT_TAB);
 
     expect(session.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  describe("AskUserQuestion", () => {
+    it("질문을 차례로 묻고 답을 돌려준 뒤 대화 영역에 요약을 남긴다", async () => {
+      const { stdin, store, session, frame } = renderApp();
+
+      const answers = store.asker({ questions: [SINGLE_QUESTION, MULTI_QUESTION] });
+      await vi.waitFor(() => expect(frame()).toContain("[1/2 방식] 어떤 방식으로 할까요?"));
+      await press(stdin, "2");
+      await vi.waitFor(() => expect(frame()).toContain("[2/2 기능] 어떤 기능을 켤까요?"));
+      await press(stdin, "1");
+      await press(stdin, "3");
+      await press(stdin, ENTER);
+
+      await expect(answers).resolves.toEqual({ "어떤 방식으로 할까요?": "B안", "어떤 기능을 켤까요?": "로그, 통계" });
+      await vi.waitFor(() => expect(frame()).toContain("방식: B안\n기능: 로그, 통계"));
+      expect(frame()).not.toContain("어떤 기능을 켤까요?");
+      expect(session.sent).toEqual([]);
+    });
+
+    it("직접 입력을 고르면 입력창으로 답을 받고 SDK로 보내지 않는다", async () => {
+      const { stdin, store, session } = renderApp();
+
+      const answers = store.asker({ questions: [SINGLE_QUESTION] });
+      await vi.waitFor(() => expect(store.getSnapshot().question).toBeDefined());
+      await press(stdin, "3");
+      await vi.waitFor(() => expect(store.getSnapshot().question?.typing).toBe(true));
+      await press(stdin, "C안으로");
+      await press(stdin, ENTER);
+
+      await expect(answers).resolves.toEqual({ "어떤 방식으로 할까요?": "C안으로" });
+      expect(session.sent).toEqual([]);
+    });
+
+    it("Esc로 취소하면 undefined", async () => {
+      const { stdin, store } = renderApp();
+
+      const answers = store.asker({ questions: [SINGLE_QUESTION] });
+      await vi.waitFor(() => expect(store.getSnapshot().question).toBeDefined());
+      await press(stdin, ESCAPE);
+
+      await expect(answers).resolves.toBeUndefined();
+      expect(store.getSnapshot().question).toBeUndefined();
+    });
+
+    it("Ctrl+C는 질문을 취소하고 턴을 중단한다 (입력 모드에서도)", async () => {
+      const { stdin, store, session } = renderApp();
+      session.isBusy = true;
+
+      const choosing = store.asker({ questions: [SINGLE_QUESTION] });
+      await vi.waitFor(() => expect(store.getSnapshot().question).toBeDefined());
+      await press(stdin, CTRL_C);
+      await expect(choosing).resolves.toBeUndefined();
+      expect(session.interrupt).toHaveBeenCalledTimes(1);
+
+      const typing = store.asker({ questions: [SINGLE_QUESTION] });
+      await vi.waitFor(() => expect(store.getSnapshot().question).toBeDefined());
+      await press(stdin, "3");
+      await press(stdin, CTRL_C);
+      await expect(typing).resolves.toBeUndefined();
+      expect(session.interrupt).toHaveBeenCalledTimes(2);
+    });
+
+    it("SDK가 취소하면 질문 창을 닫고 undefined", async () => {
+      const { store } = renderApp();
+      const controller = new AbortController();
+
+      const answers = store.asker({ questions: [SINGLE_QUESTION], signal: controller.signal });
+      await vi.waitFor(() => expect(store.getSnapshot().question).toBeDefined());
+      controller.abort();
+
+      await expect(answers).resolves.toBeUndefined();
+      expect(store.getSnapshot().question).toBeUndefined();
+    });
+
+    it("권한 질문이 떠 있으면 그 답 뒤에 질문 창을 띄운다", async () => {
+      const { stdin, store, frame } = renderApp();
+
+      const decision = store.prompter({ toolName: "Bash", summary: "ls" });
+      const answers = store.asker({ questions: [SINGLE_QUESTION] });
+      await vi.waitFor(() => expect(frame()).toContain("허용할까요?"));
+      expect(store.getSnapshot().question).toBeUndefined();
+      await press(stdin, "y");
+      await expect(decision).resolves.toBe("allow");
+      await vi.waitFor(() => expect(store.getSnapshot().question).toBeDefined());
+      await press(stdin, "1");
+
+      await expect(answers).resolves.toEqual({ "어떤 방식으로 할까요?": "A안" });
+    });
   });
 
   it("권한 요청 두 개는 첫 응답 뒤에 두 번째 대화상자를 보인다", async () => {

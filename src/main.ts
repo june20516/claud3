@@ -139,6 +139,7 @@ async function main(): Promise<number> {
     queryFn: query,
     baseOptions,
     prompter: ui.prompter,
+    askUser: ui.asker,
     resume: args.resume,
     loadHistory: (sessionId) => loadHistoryLines(sessionId),
   });
