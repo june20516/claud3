@@ -11,6 +11,7 @@ import type { Session } from "../src/session.js";
 import type { UiEvent } from "../src/types.js";
 import type { UsageSnapshot } from "../src/usageStore.js";
 import {
+  HISTORY_HEADER,
   MultilineBuffer,
   createPlainUi,
   formatEvent,
@@ -115,6 +116,11 @@ describe("formatEvent", () => {
     expect(text).not.toContain("프로모션 크레딧");
   });
 
+  it("history는 머리말 아래에 이전 대화 줄을 그린다", () => {
+    const text = formatEvent({ type: "history", lines: ["> 이전 입력", "", "이전 응답"] });
+    expect(stripVTControlCharacters(text)).toBe(`\n${HISTORY_HEADER}\n> 이전 입력\n\n이전 응답\n`);
+  });
+
   it("session_closed는 'claud3 --resume <id>'와 누적 비용 포함", () => {
     const text = formatEvent({ type: "session_closed", sessionId: "abc", totalCostUsd: 0.5 });
     expect(text).toContain("claud3 --resume abc");
@@ -185,6 +191,82 @@ describe("createPlainUi prompter", () => {
     input.write("y\n");
 
     await expect(decision).resolves.toBe("allow");
+  });
+});
+
+describe("createPlainUi asker", () => {
+  const questions = [
+    {
+      question: "어떤 방식으로 할까요?",
+      header: "방식",
+      multiSelect: false,
+      options: [
+        { label: "A안", description: "빠름" },
+        { label: "B안", description: "안전함" },
+      ],
+    },
+    {
+      question: "어떤 기능을 켤까요?",
+      header: "기능",
+      multiSelect: true,
+      options: [
+        { label: "로그", description: "기록" },
+        { label: "알림", description: "통지" },
+      ],
+    },
+  ];
+  const answerPromptCount = (written: string): number => written.split("답 › ").length - 1;
+
+  it("질문을 차례로 보이고 번호·직접 입력 답을 질문 문장별로 돌려준다", async () => {
+    const { input, state, ui } = createTestUi();
+
+    const answers = ui.asker({ questions });
+    await vi.waitFor(() => expect(answerPromptCount(state.written)).toBe(1));
+    expect(state.written).toContain("[1/2 방식] 어떤 방식으로 할까요?\n  1. A안 — 빠름\n  2. B안 — 안전함");
+    input.write("2\n");
+    await vi.waitFor(() => expect(answerPromptCount(state.written)).toBe(2));
+    expect(state.written).toContain("[2/2 기능] 어떤 기능을 켤까요?");
+    input.write("1,2\n");
+
+    await expect(answers).resolves.toEqual({ "어떤 방식으로 할까요?": "B안", "어떤 기능을 켤까요?": "로그, 알림" });
+  });
+
+  it("빈 답이면 다시 묻는다", async () => {
+    const { input, state, ui } = createTestUi();
+
+    const answers = ui.asker({ questions: [questions[0]!] });
+    await vi.waitFor(() => expect(answerPromptCount(state.written)).toBe(1));
+    input.write("\n");
+    await vi.waitFor(() => expect(answerPromptCount(state.written)).toBe(2));
+    input.write("직접 쓴 답\n");
+
+    await expect(answers).resolves.toEqual({ "어떤 방식으로 할까요?": "직접 쓴 답" });
+  });
+
+  it("SDK가 취소하면 undefined", async () => {
+    const { state, ui } = createTestUi();
+    const controller = new AbortController();
+
+    const answers = ui.asker({ questions, signal: controller.signal });
+    await vi.waitFor(() => expect(answerPromptCount(state.written)).toBe(1));
+    controller.abort();
+
+    await expect(answers).resolves.toBeUndefined();
+  });
+
+  it("권한 질문과 겹치면 권한 질문이 끝난 뒤 묻는다", async () => {
+    const { input, state, ui, questionCount } = createTestUi();
+
+    const decision = ui.prompter({ toolName: "Bash", summary: "ls" });
+    const answers = ui.asker({ questions: [questions[0]!] });
+    await vi.waitFor(() => expect(questionCount()).toBe(1));
+    expect(answerPromptCount(state.written)).toBe(0);
+    input.write("y\n");
+    await expect(decision).resolves.toBe("allow");
+    await vi.waitFor(() => expect(answerPromptCount(state.written)).toBe(1));
+    input.write("1\n");
+
+    await expect(answers).resolves.toEqual({ "어떤 방식으로 할까요?": "A안" });
   });
 });
 

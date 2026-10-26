@@ -9,10 +9,12 @@ import { buildBaseOptions } from "./config.js";
 import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionModes.js";
 import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
+import { loadHistoryLines } from "./sessionHistory.js";
 import { createInkUi } from "./ui/ink/index.js";
 import { createPlainUi } from "./ui/plain.js";
 import type { ChatUi } from "./ui/runOptions.js";
 import { addUsage, configDir, readUsage } from "./usageStore.js";
+import { readUserConfig, resolvePermissionMode } from "./userConfig.js";
 
 export interface CliArgs {
   resume?: string;
@@ -31,6 +33,7 @@ Claude Agent SDK로 실행하는 터미널 코딩 CLI입니다. API 키는 macOS
   --resume <id>   이전 세션을 이어서 실행
   --model <name>  사용할 모델 (예: claude-sonnet-5-5)
   --permission-mode <mode>  권한 모드 (default, acceptEdits, plan, auto)
+                  생략하면 ~/.config/claud3/config.json의 permissionMode, 없으면 Claude Code 설정
   --plain         readline 화면으로 시작 (기본은 Ink 화면)
   -v, --version   버전 출력
   -h, --help      이 도움말 출력
@@ -112,11 +115,16 @@ async function main(): Promise<number> {
     throw error;
   }
 
+  const { config: userConfig, warnings: configWarnings } = await readUserConfig();
+  for (const warning of configWarnings) {
+    console.error(`설정 무시: ${warning}`);
+  }
+
   const baseOptions = buildBaseOptions({
     cwd: process.cwd(),
     apiKey,
     model: args.model,
-    permissionMode: args.permissionMode,
+    permissionMode: resolvePermissionMode(args.permissionMode, userConfig),
   });
   const historyFile = join(configDir(), "history");
   const ui: ChatUi =
@@ -127,7 +135,14 @@ async function main(): Promise<number> {
     })
       ? createPlainUi({ input: process.stdin, output: process.stdout, historyFile })
       : createInkUi({ stdin: process.stdin, stdout: process.stdout, historyFile });
-  const session = new Session({ queryFn: query, baseOptions, prompter: ui.prompter, resume: args.resume });
+  const session = new Session({
+    queryFn: query,
+    baseOptions,
+    prompter: ui.prompter,
+    askUser: ui.asker,
+    resume: args.resume,
+    loadHistory: (sessionId) => loadHistoryLines(sessionId),
+  });
   await ui.run(session, {
     commandContext: {
       session,

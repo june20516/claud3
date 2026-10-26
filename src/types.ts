@@ -2,6 +2,8 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 
 export type UiEvent =
   | { type: "session_start"; sessionId: string; model: string; apiKeySource: string }
+  /** resume한 세션의 이전 대화. 화면에 그릴 줄들(응답은 마크다운 스타일 적용). */
+  | { type: "history"; lines: string[] }
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolUseId: string; name: string; summary: string; input: Record<string, unknown> }
   | { type: "tool_end"; toolUseId: string; isError: boolean; summary: string }
@@ -23,3 +25,24 @@ export interface PermissionRequest {
 export type PermissionDecision = "allow" | "deny" | "always" | "allowAcceptEdits";
 
 export type PermissionPrompter = (request: PermissionRequest) => Promise<PermissionDecision>;
+
+/** AskUserQuestion 도구의 질문 하나. 선택지 외에 직접 쓴 답도 받는다. */
+export interface UserQuestion {
+  question: string;
+  /** 짧은 꼬리표(최대 12자). */
+  header: string;
+  options: { label: string; description: string }[];
+  multiSelect: boolean;
+}
+
+export interface UserQuestionRequest {
+  questions: UserQuestion[];
+  /** SDK가 이 질문을 취소하면 abort된다. */
+  signal?: AbortSignal;
+}
+
+/** 질문 문장 → 답. 답은 고른 label(여러 개면 ", "로 이음)이거나 직접 쓴 글이다. */
+export type UserQuestionAnswers = Record<string, string>;
+
+/** 사용자가 답하지 않고 취소하면 undefined. */
+export type UserQuestionPrompter = (request: UserQuestionRequest) => Promise<UserQuestionAnswers | undefined>;

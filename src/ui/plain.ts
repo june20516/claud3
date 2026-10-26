@@ -7,14 +7,25 @@ import { HISTORY_SIZE, createHistorySaver, loadHistory } from "../inputHistory.j
 import { createMarkdownRenderer } from "../markdown.js";
 import { describePermissionMode, nextPermissionMode } from "../permissionModes.js";
 import type { Session } from "../session.js";
-import type { PermissionDecision, PermissionPrompter, PermissionRequest, UiEvent } from "../types.js";
+import type {
+  PermissionDecision,
+  PermissionPrompter,
+  PermissionRequest,
+  UiEvent,
+  UserQuestionAnswers,
+  UserQuestionPrompter,
+  UserQuestionRequest,
+} from "../types.js";
 import { remainingCreditUsd } from "../usageStore.js";
+import { formatQuestionPrompt, parseQuestionAnswer } from "../userQuestions.js";
 import type { ChatUi, UiRunOptions } from "./runOptions.js";
 
 const PROMPT = "> ";
 const CONTINUATION_PROMPT = "… ";
 const EXIT_CONFIRM_WINDOW_MS = 2000;
+const ANSWER_PROMPT = "답 › ";
 const PLAN_QUESTION = "\n계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획 › ";
+export const HISTORY_HEADER = "── 이전 대화 ──";
 export const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
 
 export interface PlainUiIo {
@@ -124,6 +135,8 @@ export function formatEvent(event: UiEvent): string {
   switch (event.type) {
     case "session_start":
       return `${styleText("dim", `claud3 · API key(${event.apiKeySource}) · Agent SDK · ${event.model}`)}\n`;
+    case "history":
+      return `\n${styleText("dim", HISTORY_HEADER)}\n${event.lines.join("\n")}\n`;
     case "text_delta":
       return event.text;
     case "tool_start": {
@@ -260,13 +273,41 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
     }
   };
 
-  // readline은 질문을 한 번에 하나만 받을 수 있으므로 동시에 온 권한 요청을 차례로 묻는다.
-  let permissionQueue: Promise<unknown> = Promise.resolve();
-  const prompter: PermissionPrompter = (request) => {
-    const decision = permissionQueue.then(() => askPermission(request));
-    permissionQueue = decision.catch(() => undefined);
-    return decision;
+  /** 질문을 하나씩 보이고 답을 모은다. 취소되면 undefined. */
+  const askQuestions = async ({ questions, signal }: UserQuestionRequest): Promise<UserQuestionAnswers | undefined> => {
+    const answers: UserQuestionAnswers = {};
+    for (const [index, question] of questions.entries()) {
+      if (signal?.aborted) {
+        return undefined;
+      }
+      write(`\n${formatQuestionPrompt(question, index, questions.length)}\n`);
+      for (;;) {
+        const result = await ask(ANSWER_PROMPT, signal);
+        if (result.kind === "cancelled") {
+          if (result.by === "user") {
+            void activeSession?.interrupt();
+          }
+          return undefined;
+        }
+        const answer = parseQuestionAnswer(result.text, question);
+        if (answer !== undefined) {
+          answers[question.question] = answer;
+          break;
+        }
+      }
+    }
+    return answers;
   };
+
+  // readline은 질문을 한 번에 하나만 받을 수 있으므로 동시에 온 권한 요청과 질문을 차례로 묻는다.
+  let questionQueue: Promise<unknown> = Promise.resolve();
+  const enqueue = <T>(askNext: () => Promise<T>): Promise<T> => {
+    const result = questionQueue.then(askNext);
+    questionQueue = result.catch(() => undefined);
+    return result;
+  };
+  const prompter: PermissionPrompter = (request) => enqueue(() => askPermission(request));
+  const asker: UserQuestionPrompter = (request) => enqueue(() => askQuestions(request));
 
   const interruptTurn = (session: Session): void => {
     void session.interrupt();
@@ -415,5 +456,5 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
       rl.prompt();
     });
 
-  return { prompter, run };
+  return { prompter, asker, run };
 }

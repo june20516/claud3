@@ -67,6 +67,7 @@ claud3/
 ```ts
 type UiEvent =
   | { type: "session_start"; sessionId: string; model: string; apiKeySource: string }
+  | { type: "history"; lines: string[] } // resume한 세션의 이전 대화 (추가 2026-10-26)
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolUseId: string; name: string; summary: string }
   | { type: "tool_end"; toolUseId: string; isError: boolean; summary: string }
@@ -81,7 +82,7 @@ type UiEvent =
 3. **응답**: SDK 메시지를 `events`가 `UiEvent`로 바꾸고, UI가 그린다. 텍스트는 `includePartialMessages`로 실시간 출력한다.
 4. **권한**: SDK가 `canUseTool`을 부르면 `session`이 `PermissionPrompter`에 묻는다. 응답은 y(이번만 허용), n(거부), a(이번 세션 동안 이 도구 항상 허용)다. 설정의 allow 규칙에 해당하면 SDK가 묻지 않는다. 언제 묻는지는 권한 모드(6절 "권한 모드")가 정하고, plan 모드의 계획 승인(`ExitPlanMode`)은 y/e/n으로 따로 묻는다.
 5. **중단**: Esc 또는 실행 중 Ctrl+C는 `interrupt()`로 현재 턴만 멈춘다. 대기 중 Ctrl+C 두 번 또는 Ctrl+D는 종료한다.
-6. **종료**: 세션 ID와 누적 비용을 출력한다. `claud3 --resume <id>`로 이어서 쓴다.
+6. **종료**: 세션 ID와 누적 비용을 출력한다. `claud3 --resume <id>`로 이어서 쓴다. 이어서 열면 이전 대화의 마지막 100줄을 먼저 보여 준다(6절 "resume 시 이전 대화 표시").
 
 ## 5. 에러 처리
 
@@ -139,7 +140,7 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
 
 - 확인 결과: API 키 인증에서도 `auto`가 적용된다(init `permissionMode=auto`). 옵션을 생략하면 이 환경에서는 `default`로 시작한다. 실행 중 `setPermissionMode`가 동작하고, 다음 턴의 `system:status`·`system:init`에 바뀐 값이 실린다 (`docs/suberpowers/notes/probe-results.md` "권한 모드 확인").
 - **고르는 방법**
-  - 실행 옵션 `--permission-mode <mode>`. 주지 않으면 SDK에 넘기지 않는다(설정의 `permissions.defaultMode`, 없으면 `default`).
+  - 실행 옵션 `--permission-mode <mode>`. 주지 않으면 claud3 설정 `~/.config/claud3/config.json`(`CLAUD3_CONFIG_DIR`로 변경)의 `permissionMode`를 쓰고(추가 2026-10-26), 그것도 없으면 SDK에 넘기지 않는다(Claude Code 설정의 `permissions.defaultMode`, 없으면 `default`). claud3 설정은 Claude Code의 기본 모드를 바꾸지 않으려고 따로 둔다. 설정 파일이 깨졌거나 모드 이름이 틀리면 stderr에 `설정 무시: ...`를 출력하고 그 값을 무시한다.
   - 세션 안 `/mode`: 현재 모드(`*` 표시)와 네 선택지·설명, 마지막 줄 `바꾸려면: /mode <이름> · Shift+Tab`. `/mode <이름>`으로 바로 바꾼다.
   - Shift+Tab: `default → acceptEdits → plan → auto → default` 순서로 순환한다. 현재 모드가 목록 밖(설정의 `dontAsk` 등)이면 `default`로 간다. 권한 질문 중에는 무시하고, 턴 실행 중과 여러 줄 입력 중에는 허용한다.
   - 모드 변경은 턴 실행 중에도 된다(`/model`과 다름).
@@ -179,7 +180,25 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
   - 시작 잔액을 모르면 상태 줄에서 잔액만 빼고 보인다. Ctrl+D는 입력이 비어 있을 때만 종료한다.
   - 입력창은 터미널의 실제 커서를 커서 칸에 둔다(Ink `useCursor`). 한글 IME가 조합 중인 글자를 상태 줄 아래가 아니라 입력창에 그리게 하기 위해서다(승격 후 사용 중 발견, 2026-10-22).
   - 진행 표시 줄(대화와 입력창 사이 한 줄)은 진행 중 응답 줄(넘치면 끝부분), 실행 중 도구(여럿이면 나머지 개수), 빈 줄 중 하나만 보여 높이가 늘 같다. 응답이 나오는 동안 상태 줄이 위아래로 움직이지 않는다.
-  - diff의 추가·삭제 줄은 어두운 초록·빨강 배경(256색 22·52)을 깔고, Ink 화면에서는 터미널 폭 끝까지 채운다. 상태 줄은 터미널 폭 전체의 어두운 회색 띠(`#303030`)다.
+  - diff의 추가·삭제 줄은 어두운 초록·빨강 배경(256색 22·52)을 깔고, Ink 화면에서는 터미널 폭 끝까지 채운다. 상태 줄은 터미널 폭 전체의 어두운 회색 띠(`#303030`)이고, 글자색은 밝은 회색(`#d0d0d0`)으로 명시한다. 터미널 기본 글자색에 맡기면 밝은 테마에서 배경과 구분되지 않기 때문이다.
+
+### resume 시 이전 대화 표시 (추가 2026-10-26, 3단계 이후)
+
+- `claud3 --resume <id>`와 `/resume <id>`로 세션을 열면 이전 대화의 마지막 100줄을 "── 이전 대화 ──" 머리말 아래에 먼저 그린다. plain·Ink 화면 모두 같다.
+- 기록은 SDK `getSessionMessages(sessionId)`로 로컬 세션 파일에서 읽는다(API 호출 없음). `sessionHistory`가 화면과 같은 모양의 줄로 바꾼다: 사용자 입력은 `> `, 응답은 마크다운, 도구 호출은 `⏺ 이름(요약)`, 블록 사이는 빈 줄. thinking, 도구 결과, 서브에이전트 메시지, 메타·compact 요약, 슬래시 명령 기록은 뺀다. 100줄은 터미널 줄바꿈 전 논리 줄 기준이다.
+- `session`은 주입받은 `loadHistory`로 기록을 읽어 SDK 메시지보다 먼저 `history` 이벤트로 보낸다. 연결이 끊겨 다시 붙을 때는 보내지 않는다. 읽지 못하면 `error` 이벤트로 알리고 대화는 계속한다.
+
+### AskUserQuestion 처리 (추가 2026-10-26, 3단계 이후)
+
+- 이전에는 AskUserQuestion도 일반 도구처럼 y/a/n 권한 질문을 거쳐, 허용해도 답이 전달되지 않았다.
+- SDK 문서(code.claude.com/docs/en/agent-sdk/user-input) 방식대로 `canUseTool`에서 `toolName === "AskUserQuestion"`이면 권한 질문 대신 화면의 `asker`(`UserQuestionPrompter`)로 묻고 `{ behavior: "allow", updatedInput: { ...input, answers } }`를 돌려준다. `answers`는 질문 문장 → 고른 label(복수 선택은 `", "`로 이음) 또는 직접 쓴 답이다.
+- 사용자가 취소하면 `deny`("사용자가 질문에 답하지 않았습니다"), 입력 형식이 맞지 않으면 묻지 않고 `deny`, 화면이 `asker`를 주지 않으면 `deny`.
+- 화면은 권한 질문과 같은 대기열로 질문을 하나씩 띄운다.
+  - plain: 질문과 번호 붙은 선택지를 출력하고 `답 › `으로 받는다. 번호(복수 선택은 쉼표로 여러 개)는 label로 바꾸고, 그 밖의 글은 직접 쓴 답이다. 빈 답은 다시 묻는다.
+  - Ink: 권한 창 자리에 질문 창(`QuestionDialog`). ↑/↓·Enter·숫자로 고르고, 복수 선택은 Space·숫자로 체크한다. 마지막 "직접 입력"은 아래 입력창으로 답을 받는다(한글 IME 커서를 입력창이 맞추므로). 답이 끝나면 `header: 답` 요약을 대화 영역에 남긴다.
+  - Esc는 취소(직접 입력 중이면 선택지로), Ctrl+C는 취소하고 턴 중단.
+- 선택지의 `preview`(`toolConfig.askUserQuestion.previewFormat`)는 쓰지 않는다.
+- 도구 줄 요약은 첫 질문 문장(여럿이면 `질문 N개: …`)이다.
 
 ## 7. 자기 개발 (self-hosting)
 

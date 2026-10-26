@@ -26,7 +26,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 |---|---|
 | `claud3` | 새 세션 시작 |
 | `claud3 --model <ID>` | 모델을 지정해 시작 |
-| `claud3 --resume <ID>` | 이전 세션을 이어서 시작 |
+| `claud3 --resume <ID>` | 이전 세션을 이어서 시작 (이전 대화의 마지막 100줄을 먼저 보여 줌) |
 | `claud3 --permission-mode <mode>` | 권한 모드를 지정해 시작 (`default`, `acceptEdits`, `plan`, `auto`) |
 | `claud3 --help` · `--version` | 도움말 · 버전 |
 
@@ -44,7 +44,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | `/model` | 현재 모델과 쓸 수 있는 모델 목록 |
 | `/model <ID>` | 모델 바꾸기 (예: `/model claude-sonnet-5-5`). 바꾼 뒤 첫 턴은 캐시가 새로 만들어져 비쌉니다 |
 | `/clear` | 새 대화 시작 |
-| `/resume <ID>` | 이전 세션으로 이동 (종료할 때 세션 ID가 출력됩니다) |
+| `/resume <ID>` | 이전 세션으로 이동, 이전 대화의 마지막 100줄 표시 (종료할 때 세션 ID가 출력됩니다) |
 | `/help` | 도움말 |
 | `/mode` | 현재 권한 모드와 선택지 |
 | `/mode <이름>` | 권한 모드 바꾸기 (default, acceptEdits, plan, auto) |
@@ -77,6 +77,19 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | `e` | 승인하고 편집 자동 허용 |
 | `n` | 계속 계획 |
 
+**Claude의 질문 (AskUserQuestion)**
+
+Claude가 선택지를 주고 물으면 질문 창이 뜹니다. 질문이 여럿이면 차례로 묻고, 답은 대화 영역에 `header: 답`으로 남습니다.
+
+| 입력 | 설명 |
+|---|---|
+| ↑/↓, Enter | 선택지 고르기 (Ink 화면) |
+| 숫자 | 그 선택지로 답하기. 복수 선택 질문은 체크 (plain 화면은 `1,3`처럼 쉼표로) |
+| Space | 복수 선택 질문에서 체크 (Ink 화면) |
+| `직접 입력` | 선택지 대신 답을 직접 씁니다. Ink 화면은 입력창에 쓰고 Enter, plain 화면은 번호 대신 글을 입력 |
+| Esc | 취소 (직접 입력 중이면 선택지로 돌아감) |
+| Ctrl+C | 취소하고 턴 중단 |
+
 **실행 옵션 (터미널에서)**
 
 | 입력 | 설명 |
@@ -108,7 +121,14 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | `plan` | 계획만 세우고 도구 실행 안 함 |
 | `auto` | 분류기가 판단, 애매하면 묻기 |
 
-- 시작할 때 `--permission-mode`를 생략하면 설정의 `defaultMode`를 따르고, 설정에도 없으면 `default`입니다.
+- 시작 모드는 다음 순서로 정합니다.
+  1. `--permission-mode <모드>`
+  2. claud3 설정 `~/.config/claud3/config.json`의 `permissionMode` (Claude Code에는 영향 없음)
+     ```json
+     { "permissionMode": "acceptEdits" }
+     ```
+  3. Claude Code 설정의 `permissions.defaultMode`, 그것도 없으면 `default`
+- 설정 파일의 JSON이 깨졌거나 모드 이름이 틀리면 시작할 때 `설정 무시: ...`를 출력하고 그 값을 쓰지 않습니다.
 - 세션 안에서는 `/mode <이름>` 또는 Shift+Tab으로 바꿉니다. 턴이 실행 중일 때도 바꿀 수 있습니다. `/clear`·`/resume` 후에도 모드가 유지됩니다.
 - 현재 모드는 상태 줄에 표시됩니다.
 - plan 모드에서는 Claude가 계획을 세운 뒤 계획 본문을 보여 주고 승인을 묻습니다.

@@ -2,6 +2,7 @@ import { Box, Static, Text, useStdout } from "ink";
 import { useMemo } from "react";
 import { formatToolDiff } from "../../diffView.js";
 import { renderMarkdownLine } from "../../markdown.js";
+import { HISTORY_HEADER } from "../plain.js";
 import { columnsOf } from "./terminalSize.js";
 import type { NoticeItem, RunningTool, StreamingText, ToolItem, TranscriptItem, TranscriptState } from "./transcript.js";
 
@@ -36,6 +37,15 @@ function NoticeView({ item }: { item: NoticeItem }) {
   );
 }
 
+function HistoryView({ text }: { text: string }) {
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{HISTORY_HEADER}</Text>
+      <Text>{text}</Text>
+    </Box>
+  );
+}
+
 function ItemView({ item }: { item: TranscriptItem }) {
   switch (item.kind) {
     case "user":
@@ -46,6 +56,8 @@ function ItemView({ item }: { item: TranscriptItem }) {
       return <ToolView item={item} />;
     case "notice":
       return <NoticeView item={item} />;
+    case "history":
+      return <HistoryView text={item.text} />;
   }
 }
 
