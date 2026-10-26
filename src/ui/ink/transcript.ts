@@ -41,6 +41,15 @@ export interface StreamingText {
   heldBlankLines: number;
 }
 
+/** 프롬프트를 보낸 뒤 turn_result가 올 때까지의 진행 상태. */
+export interface TurnProgress {
+  startedAt: number;
+  /** 이번 턴에 보낸 토큰(입력, 캐시 포함). */
+  inputTokens: number;
+  /** 이번 턴에 받은 토큰(받는 중이면 추정). */
+  outputTokens: number;
+}
+
 export interface TranscriptState {
   /** Static으로 한 번만 그리는 확정 항목 */
   done: TranscriptItem[];
@@ -53,6 +62,8 @@ export interface TranscriptState {
   model?: string;
   permissionMode?: PermissionMode;
   header?: string;
+  /** 진행 중인 턴. 없으면 응답을 기다리고 있지 않다. */
+  turn?: TurnProgress;
 }
 
 export const initialTranscript: TranscriptState = {
@@ -136,6 +147,14 @@ export function addUserInput(state: TranscriptState, text: string): TranscriptSt
   };
 }
 
+/** 프롬프트를 보낼 때 턴을 시작한다. 이미 진행 중이면(대기열 입력) 그대로 둔다. */
+export function startTurn(state: TranscriptState, startedAt: number): TranscriptState {
+  if (state.turn !== undefined) {
+    return state;
+  }
+  return { ...state, turn: { startedAt, inputTokens: 0, outputTokens: 0 } };
+}
+
 export function addNotice(state: TranscriptState, tone: NoticeTone, text: string): TranscriptState {
   return appendNotice(commitStreaming(state), tone, text);
 }
@@ -143,6 +162,12 @@ export function addNotice(state: TranscriptState, tone: NoticeTone, text: string
 export function reduceTranscript(state: TranscriptState, event: UiEvent): TranscriptState {
   if (event.type === "text_delta") {
     return appendTextDelta(state, event.text);
+  }
+  // 응답 조각마다 오므로 진행 중인 응답 줄을 확정하지 않는다.
+  if (event.type === "token_usage") {
+    return state.turn === undefined
+      ? state
+      : { ...state, turn: { ...state.turn, inputTokens: event.inputTokens, outputTokens: event.outputTokens } };
   }
 
   const committed = commitStreaming(state);
@@ -192,7 +217,7 @@ export function reduceTranscript(state: TranscriptState, event: UiEvent): Transc
       return { ...next, done: [...next.done, notice], nextId: next.nextId + 1 };
     }
     case "turn_result": {
-      let next: TranscriptState = { ...committed, sessionCostUsd: event.totalCostUsd };
+      let next: TranscriptState = { ...committed, sessionCostUsd: event.totalCostUsd, turn: undefined };
       if (event.isError && event.errorMessage) {
         next = appendNotice(next, "error", event.errorMessage);
         if (/credit balance/i.test(event.errorMessage)) {
@@ -208,14 +233,15 @@ export function reduceTranscript(state: TranscriptState, event: UiEvent): Transc
         `권한 모드: ${describePermissionMode(event.mode)}`,
       );
     case "error":
-      return appendNotice(committed, "error", `오류: ${event.message}`);
+      // 연결이 끊기면 turn_result 없이 턴이 끝난다.
+      return appendNotice({ ...committed, turn: undefined }, "error", `오류: ${event.message}`);
     case "session_closed": {
       const lines: string[] = [];
       if (event.sessionId) {
         lines.push(`세션 ID: ${event.sessionId}  (이어서: claud3 --resume ${event.sessionId})`);
       }
       lines.push(`누적 비용 ${usd(event.totalCostUsd)}`);
-      return appendNotice(committed, "info", lines.join("\n"));
+      return appendNotice({ ...committed, turn: undefined }, "info", lines.join("\n"));
     }
   }
 }

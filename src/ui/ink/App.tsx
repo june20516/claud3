@@ -28,7 +28,14 @@ import { SessionPicker } from "./SessionPicker.js";
 import { StatusBar } from "./StatusBar.js";
 import { Transcript } from "./TranscriptView.js";
 import type { NoticeTone, TranscriptState } from "./transcript.js";
-import { addNotice, addUserInput, commitStreaming, initialTranscript, reduceTranscript } from "./transcript.js";
+import {
+  addNotice,
+  addUserInput,
+  commitStreaming,
+  initialTranscript,
+  reduceTranscript,
+  startTurn,
+} from "./transcript.js";
 
 const EXIT_CONFIRM_WINDOW_MS = 2000;
 
@@ -149,6 +156,11 @@ export class InkUiStore {
 
   addUserInput(text: string): void {
     this.update({ transcript: addUserInput(this.snapshot.transcript, text) });
+  }
+
+  /** 프롬프트를 보낼 때 응답 대기 표시를 시작한다. */
+  startTurn(): void {
+    this.update({ transcript: startTurn(this.snapshot.transcript, Date.now()) });
   }
 
   addNotice(tone: NoticeTone, text: string): void {
@@ -343,6 +355,7 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
   const runInput = (text: string): void => {
     const parsed = parseInput(text);
     if (parsed.kind === "prompt") {
+      store.startTurn();
       session.send(text);
       return;
     }

@@ -73,6 +73,23 @@ function resultErrorMessage(message: SDKResultMessage): string | undefined {
   return message.errors.length > 0 ? message.errors.join("\n") : message.subtype;
 }
 
+/** 받는 중인 응답의 토큰 추정에 쓰는 글자 수. 정확한 값은 응답이 끝날 때 message_delta로 온다. */
+const ESTIMATED_CHARS_PER_TOKEN = 4;
+
+/** 받는 중인 응답 조각의 글자 수. 텍스트·도구 입력·생각 조각을 센다. */
+function deltaLength(delta: { type: string }): number {
+  if ("text" in delta && typeof delta.text === "string") {
+    return delta.text.length;
+  }
+  if ("partial_json" in delta && typeof delta.partial_json === "string") {
+    return delta.partial_json.length;
+  }
+  if ("thinking" in delta && typeof delta.thinking === "string") {
+    return delta.thinking.length;
+  }
+  return 0;
+}
+
 /**
  * SDK 메시지를 화면용 이벤트로 바꾸는 매퍼를 만든다.
  * SDK의 total_cost_usd는 query 시작부터의 누적값이므로 직전 값과의 차이를 턴 비용으로 본다.
@@ -80,6 +97,17 @@ function resultErrorMessage(message: SDKResultMessage): string | undefined {
 export function createEventMapper(initialTotalUsd = 0): (message: SDKMessage) => UiEvent[] {
   let hasStarted = false;
   let previousQueryCostUsd = 0;
+  // 이번 턴의 토큰. 턴 안의 API 호출(도구 사용마다 한 번)을 모두 더한다.
+  let turnInputTokens = 0;
+  let finishedOutputTokens = 0;
+  /** 진행 중인 응답에서 받은 글자 수. message_delta의 정확한 값이 오기 전까지 토큰을 추정한다. */
+  let streamingChars = 0;
+
+  const tokenUsage = (): UiEvent => ({
+    type: "token_usage",
+    inputTokens: turnInputTokens,
+    outputTokens: finishedOutputTokens + Math.ceil(streamingChars / ESTIMATED_CHARS_PER_TOKEN),
+  });
 
   return (message) => {
     switch (message.type) {
@@ -95,8 +123,23 @@ export function createEventMapper(initialTotalUsd = 0): (message: SDKMessage) =>
 
       case "stream_event": {
         const event = message.event;
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          return [{ type: "text_delta", text: event.delta.text }];
+        if (event.type === "message_start") {
+          const usage = event.message.usage;
+          turnInputTokens +=
+            usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+          streamingChars = 0;
+          return [tokenUsage()];
+        }
+        if (event.type === "message_delta") {
+          finishedOutputTokens += event.usage.output_tokens;
+          streamingChars = 0;
+          return [tokenUsage()];
+        }
+        if (event.type === "content_block_delta") {
+          streamingChars += deltaLength(event.delta);
+          const textEvents: UiEvent[] =
+            event.delta.type === "text_delta" ? [{ type: "text_delta", text: event.delta.text }] : [];
+          return [...textEvents, tokenUsage()];
         }
         return [];
       }
@@ -126,6 +169,9 @@ export function createEventMapper(initialTotalUsd = 0): (message: SDKMessage) =>
         });
 
       case "result": {
+        turnInputTokens = 0;
+        finishedOutputTokens = 0;
+        streamingChars = 0;
         const costUsd = message.total_cost_usd - previousQueryCostUsd;
         previousQueryCostUsd = message.total_cost_usd;
         const errorMessage = resultErrorMessage(message);

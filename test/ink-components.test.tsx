@@ -18,7 +18,13 @@ import { StatusBar } from "../src/ui/ink/StatusBar.js";
 import { Transcript } from "../src/ui/ink/TranscriptView.js";
 import { createInkUi } from "../src/ui/ink/index.js";
 import type { TranscriptState } from "../src/ui/ink/transcript.js";
-import { addNotice, addUserInput, initialTranscript, reduceTranscript } from "../src/ui/ink/transcript.js";
+import {
+  addNotice,
+  addUserInput,
+  initialTranscript,
+  reduceTranscript,
+  startTurn,
+} from "../src/ui/ink/transcript.js";
 import type { UiRunOptions } from "../src/ui/runOptions.js";
 import { HISTORY_HEADER } from "../src/ui/plain.js";
 
@@ -183,6 +189,49 @@ describe("Transcript", () => {
     expect(text).toContain(`${HISTORY_HEADER}\n> 이전 입력\n\n이전 응답`);
   });
 
+  describe("응답 대기 표시", () => {
+    function turnState(overrides: Partial<NonNullable<TranscriptState["turn"]>> = {}): TranscriptState {
+      const started = startTurn(initialTranscript, Date.now() - 12_000);
+      return { ...started, turn: { ...started.turn!, inputTokens: 3200, outputTokens: 850, ...overrides } };
+    }
+
+    it("턴 중에는 '처리 중', 경과 시간, 보낸·받은 토큰, 중단 안내를 한 줄로 보인다", () => {
+      const state = turnState();
+      const text = plainFrame(render(<Transcript state={state} />).lastFrame);
+
+      expect(text).toContain("처리 중… (12초 · ↑ 3.2k · ↓ 850 토큰 · Esc 중단)");
+    });
+
+    it("도구가 실행 중이면 문구 자리에 도구를 보인다", () => {
+      const state = reduceTranscript(turnState(), {
+        type: "tool_start",
+        toolUseId: "t1",
+        name: "Bash",
+        summary: "ls",
+        input: { command: "ls" },
+      });
+      const text = plainFrame(render(<Transcript state={state} />).lastFrame);
+
+      expect(text).toContain("Bash(ls) 실행 중… (12초 · ↑ 3.2k · ↓ 850 토큰 · Esc 중단)");
+    });
+
+    it("턴 중에는 아직 줄바꿈이 오지 않은 응답 조각 대신 대기 표시를 보인다", () => {
+      const state = reduceTranscript(turnState(), { type: "text_delta", text: "아직 쓰는 중인 줄" });
+      const text = plainFrame(render(<Transcript state={state} />).lastFrame);
+
+      expect(text).not.toContain("아직 쓰는 중인 줄");
+      expect(text).toContain("Esc 중단");
+    });
+
+    it("1000 토큰 이상은 k 단위, 10만 이상은 소수점 없이 보인다", () => {
+      const text = plainFrame(
+        render(<Transcript state={turnState({ inputTokens: 123_456, outputTokens: 999 })} />).lastFrame,
+      );
+
+      expect(text).toContain("↑ 123k · ↓ 999 토큰");
+    });
+  });
+
   describe("진행 표시 줄", () => {
     const editStart: UiEvent = {
       type: "tool_start",
@@ -250,8 +299,23 @@ describe("Transcript", () => {
     const addedLine = (lastFrame() ?? "").split("\n").find((line) => line.includes("+ new line")) ?? "";
     vi.unstubAllEnvs();
 
-    expect(addedLine).toContain("\u001b[48;5;22m");
+    expect(addedLine.startsWith("\u001b[48;5;194m")).toBe(true);
     expect(stripVTControlCharacters(addedLine)).toHaveLength(stdout.columns);
+  });
+
+  it("diff 아래에 파일 경로와 삭제·추가 요약을 보인다", () => {
+    const state = reduceTranscript(initialTranscript, {
+      type: "tool_start",
+      toolUseId: "t1",
+      name: "Edit",
+      summary: "a.ts",
+      input: { file_path: "a.ts", old_string: "old line", new_string: "new line" },
+    });
+
+    const text = plainFrame(render(<Transcript state={{ ...state, running: [] }} />).lastFrame);
+
+    expect(text).toContain("+ new line");
+    expect(text.indexOf("+ new line")).toBeLessThan(text.indexOf("⎿ a.ts · 1줄 삭제, 1줄 추가"));
   });
 
   it("tool_start 직후 도구 줄과 diff는 확정 영역에 있다", () => {
@@ -907,6 +971,30 @@ describe("App", () => {
 
     await vi.waitFor(() => expect(frame()).toContain("claude-test"));
     expect(frame()).not.toContain("git 없음");
+  });
+
+  it("프롬프트를 보내면 응답 대기 표시가 뜨고, turn_result가 오면 사라진다", async () => {
+    const { stdin, session, store, frame } = renderApp();
+
+    await press(stdin, "안녕");
+    await press(stdin, ENTER);
+
+    await vi.waitFor(() => expect(frame()).toContain("처리 중… ("));
+    expect(store.getSnapshot().transcript.turn).toBeDefined();
+    session.emit({ type: "token_usage", inputTokens: 1500, outputTokens: 40 });
+    await vi.waitFor(() => expect(frame()).toContain("↑ 1.5k · ↓ 40 토큰"));
+    session.emit({ type: "turn_result", costUsd: 0.01, totalCostUsd: 0.01, isError: false });
+
+    await vi.waitFor(() => expect(frame()).not.toContain("Esc 중단"));
+  });
+
+  it("내장 명령은 응답 대기 표시를 띄우지 않는다", async () => {
+    const { stdin, store } = renderApp();
+
+    await press(stdin, "/help");
+    await press(stdin, ENTER);
+
+    expect(store.getSnapshot().transcript.turn).toBeUndefined();
   });
 
   describe("세션 고르기", () => {

@@ -1,12 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DIFF_MAX_LINES, formatToolDiff } from "../src/diffView.js";
+import { DIFF_MAX_LINES, formatDiffSummary, formatToolDiff } from "../src/diffView.js";
 
-const ADDED_BACKGROUND = "\u001b[48;5;22m";
-const REMOVED_BACKGROUND = "\u001b[48;5;52m";
-// 밝은 글자(256색 255). 기본 글자색에 맡기면 밝은 테마에서 검은 글자가 어두운 배경에 묻힌다.
-const LIGHT_FOREGROUND = "\u001b[38;5;255m";
-const RESET_FOREGROUND = "\u001b[39m";
+// 파스텔 배경(256색 연두 194·분홍 224)에 진한 글자(초록 22·빨강 88).
+const ADDED_STYLE = "\u001b[48;5;194m\u001b[38;5;22m";
+const REMOVED_STYLE = "\u001b[48;5;224m\u001b[38;5;88m";
+const RESET_STYLE = "\u001b[49m\u001b[39m";
 
 describe("formatToolDiff 배경색", () => {
   afterEach(() => {
@@ -22,25 +21,24 @@ describe("formatToolDiff 배경색", () => {
     return (formatToolDiff("Edit", input, options) ?? "").split("\n");
   }
 
-  it("추가 줄은 어두운 초록, 삭제 줄은 어두운 빨강 배경이고 문맥 줄에는 배경이 없다", () => {
+  it("추가 줄은 연두 배경에 진한 초록, 삭제 줄은 분홍 배경에 진한 빨강 글자이고 문맥 줄에는 색이 없다", () => {
     forceColor();
     const [context, removed, added] = rawLines({ old_string: "same\nold", new_string: "same\nnew" });
 
-    expect(removed).toContain(REMOVED_BACKGROUND);
-    expect(added).toContain(ADDED_BACKGROUND);
-    expect(context).not.toContain(ADDED_BACKGROUND);
-    expect(context).not.toContain(REMOVED_BACKGROUND);
+    expect(removed).toContain(REMOVED_STYLE);
+    expect(added).toContain(ADDED_STYLE);
+    for (const line of [removed, added]) {
+      expect(line?.endsWith(RESET_STYLE)).toBe(true);
+    }
+    expect(context).not.toContain("\u001b[48;5;");
   });
 
-  it("추가·삭제 줄의 글자는 밝은색으로 명시하고 줄 끝에서 되돌린다", () => {
+  it("배경은 들여쓰기를 포함해 줄 맨 앞부터 깐다", () => {
     forceColor();
-    const [context, removed, added] = rawLines({ old_string: "same\nold", new_string: "same\nnew" });
+    const [removed, added] = rawLines({ old_string: "old", new_string: "new" }, { width: 20 });
 
-    for (const line of [removed, added]) {
-      expect(line).toContain(`${LIGHT_FOREGROUND}`);
-      expect(line?.endsWith(RESET_FOREGROUND)).toBe(true);
-    }
-    expect(context).not.toContain(LIGHT_FOREGROUND);
+    expect(removed?.startsWith(`${REMOVED_STYLE}    - old`)).toBe(true);
+    expect(added?.startsWith(`${ADDED_STYLE}    + new`)).toBe(true);
   });
 
   it("폭을 주면 바뀐 줄의 배경을 그 폭 끝까지 채운다", () => {
@@ -137,5 +135,63 @@ describe("formatToolDiff", () => {
   it("필요한 문자열 필드가 없으면 undefined", () => {
     expect(formatToolDiff("Edit", { old_string: "a" })).toBeUndefined();
     expect(formatToolDiff("Write", {})).toBeUndefined();
+  });
+});
+
+describe("formatDiffSummary", () => {
+  const cwd = "/work";
+  const fileWith = (content: string) => (path: string) => (path === "/work/src/a.ts" ? content : undefined);
+  const summary = (toolName: string, input: Record<string, unknown>, readFile: (path: string) => string | undefined) =>
+    stripVTControlCharacters(formatDiffSummary(toolName, input, { cwd, readFile }) ?? "");
+
+  const lines = (count: number): string => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n");
+
+  it("파일에서 바꿀 문자열의 위치로 행 번호를 찾아 삭제·추가 줄 수를 요약한다", () => {
+    const content = `${lines(11)}\na\nb\ntail`;
+    const input = { file_path: "/work/src/a.ts", old_string: "a\nb", new_string: "a\nc\nd" };
+
+    expect(summary("Edit", input, fileWith(content))).toBe("⎿ src/a.ts · 13행 1줄 삭제, 13행 2줄 추가");
+  });
+
+  it("이미 수정이 적용됐으면 새 문자열의 위치로 찾는다", () => {
+    const content = `${lines(11)}\na\nc\nd\ntail`;
+    const input = { file_path: "/work/src/a.ts", old_string: "a\nb", new_string: "a\nc\nd" };
+
+    expect(summary("Edit", input, fileWith(content))).toBe("⎿ src/a.ts · 13행 1줄 삭제, 13행 2줄 추가");
+  });
+
+  it("위치를 찾지 못하면 줄 수만 보인다", () => {
+    const input = { file_path: "/work/src/a.ts", old_string: "x", new_string: "y\nz" };
+
+    expect(summary("Edit", input, () => undefined)).toBe("⎿ src/a.ts · 1줄 삭제, 2줄 추가");
+  });
+
+  it("떨어진 변경은 각각의 행을 보이고, 추가만 있으면 추가만 보인다", () => {
+    const input = { file_path: "/work/src/a.ts", old_string: "a\nb\nc\nd\ne\nf\ng\n", new_string: "a\nB\nc\nd\ne\nf\ng\nh\n" };
+
+    expect(summary("Edit", input, fileWith("a\nb\nc\nd\ne\nf\ng\n"))).toBe(
+      "⎿ src/a.ts · 2행 1줄 삭제, 2행 1줄 추가, 8행 1줄 추가",
+    );
+  });
+
+  it("replace_all은 위치 없이 모든 위치 바꿈으로 보인다", () => {
+    const input = { file_path: "/work/src/a.ts", old_string: "x", new_string: "y", replace_all: true };
+
+    expect(summary("Edit", input, fileWith("x\nx"))).toBe("⎿ src/a.ts · 모든 위치 바꿈: 1줄 삭제, 1줄 추가");
+  });
+
+  it("Write는 새 파일이면 새 파일 줄 수, 있던 파일이면 덮어쓴 줄 수를 보인다", () => {
+    const write = { file_path: "/work/src/a.ts", content: "a\nb\nc\n" };
+
+    expect(summary("Write", write, () => undefined)).toBe("⎿ src/a.ts · 새 파일 3줄");
+    expect(summary("Write", write, fileWith("old"))).toBe("⎿ src/a.ts · 파일 전체 3줄로 바꿈");
+  });
+
+  it("cwd 밖 경로는 그대로 보이고, 다른 도구나 경로가 없으면 undefined", () => {
+    const input = { file_path: "/etc/hosts", old_string: "a", new_string: "b" };
+
+    expect(summary("Edit", input, () => undefined)).toBe("⎿ /etc/hosts · 1줄 삭제, 1줄 추가");
+    expect(formatDiffSummary("Bash", { command: "ls" }, { cwd, readFile: () => undefined })).toBeUndefined();
+    expect(formatDiffSummary("Edit", { old_string: "a", new_string: "b" }, { cwd, readFile: () => undefined })).toBeUndefined();
   });
 });

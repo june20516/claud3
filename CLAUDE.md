@@ -11,7 +11,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | 경로 | 책임 |
 |---|---|
 | `src/types.ts` | `UiEvent`, 권한 요청·응답 타입 |
-| `src/events.ts` | SDK 메시지 → `UiEvent` 변환 (I/O 없음). `total_cost_usd`는 query 단위 누적값 |
+| `src/events.ts` | SDK 메시지 → `UiEvent` 변환 (I/O 없음). `total_cost_usd`는 query 단위 누적값. 턴의 보낸·받은 토큰(`token_usage`, 받는 중이면 글자 수로 추정) |
 | `src/auth.ts` | macOS 키체인 `anthropic-api`에서 API 키 조회 |
 | `src/config.ts` | 기본 SDK 옵션 (settingSources, claude_code preset, 스트리밍, env의 API 키) |
 | `src/asyncQueue.ts` | SDK로 보내는 입력 대기열 |
@@ -24,15 +24,15 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/workspaceInfo.ts` | 상태 줄의 현재 디렉터리(`~` 축약)와 git 브랜치 읽기 |
 | `src/userConfig.ts` | `~/.config/claud3/config.json`의 claud3 전용 설정(기본 권한 모드) 읽기와 우선순위 |
 | `src/commands.ts` | 슬래시 명령(`/cost`·`/model`·`/mode`·`/clear`·`/resume`·`/help`) 파싱·실행과 `HELP_TEXT`. 인자 없는 `/resume`은 화면의 `pickSession`으로 고른다 |
-| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 (추가·삭제 줄 어두운 배경 + 밝은 글자색) |
+| `src/diffView.ts` | Edit·Write 도구 입력을 diff 문자열(파스텔 배경 + 진한 글자, 줄 전체 폭)과 아래 요약(경로, 행·줄 수 삭제·추가)으로 변환 |
 | `src/markdown.ts` | 스트리밍 텍스트를 줄 단위로 마크다운 스타일링 |
 | `src/inputHistory.ts` | 입력 기록 파일 읽기/저장 (화면 공용, 한 줄에 JSON 문자열 하나라 여러 줄 입력도 저장, 예전 형식 줄도 읽음) |
 | `src/ui/runOptions.ts` | `UiRunOptions`(`startupCommand` 포함), `ChatUi` 타입(`prompter`·`asker`). 명령 출력(`print`)과 세션 고르기(`pickSession`)는 화면이 제공한다 |
 | `src/ui/plain.ts` | readline 화면(`--plain`, TTY가 아닐 때), 상태 줄(권한 모드 포함), 여러 줄 입력, 입력 기록, 권한 질문, 계획 승인 질문, Shift+Tab 모드 순환. 로직 없이 이벤트를 그리기만 한다 |
 | `src/ui/ink/index.tsx` | `createInkUi` — Ink 화면 생성·실행 (기본 화면) |
 | `src/ui/ink/App.tsx` | Ink 화면 조립: 이벤트 구독, 입력·권한 흐름 |
-| `src/ui/ink/transcript.ts` | `UiEvent` → 대화 상태 리듀서 (I/O 없음) |
-| `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기 |
+| `src/ui/ink/transcript.ts` | `UiEvent` → 대화 상태 리듀서 (I/O 없음). 턴 진행(`startTurn`, 경과 시간·토큰) |
+| `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기, 진행 표시 줄(응답 대기 표시: 도는 기호·"처리 중"·경과 시간·토큰) |
 | `src/ui/ink/InputBox.tsx` | 입력창 (Shift+Enter·`\` 여러 줄, 기록, 글자 단위 줄 넘김, 한글 IME를 위한 실제 커서 위치) |
 | `src/ui/ink/PermissionDialog.tsx` | 도구 권한·계획 승인 질문 |
 | `src/ui/ink/QuestionDialog.tsx` | AskUserQuestion 질문 창 (선택지, 복수 체크, 직접 입력은 입력창으로) |

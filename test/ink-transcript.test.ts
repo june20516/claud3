@@ -8,6 +8,7 @@ import {
   commitStreaming,
   initialTranscript,
   reduceTranscript,
+  startTurn,
   type TranscriptState,
 } from "../src/ui/ink/transcript.js";
 import type { UiEvent } from "../src/types.js";
@@ -237,5 +238,44 @@ describe("history 이벤트", () => {
     expect(state.done).toEqual([{ kind: "history", id: 0, text: "> 이전 입력\n\n이전 응답" }]);
     expect(state.nextId).toBe(1);
     expect(HISTORY_HEADER).toContain("이전 대화");
+  });
+});
+
+describe("턴 진행 표시", () => {
+  const usage = (inputTokens: number, outputTokens: number): UiEvent => ({ type: "token_usage", inputTokens, outputTokens });
+
+  it("startTurn은 시작 시각을 정하고 토큰을 0으로 둔다", () => {
+    const state = startTurn(initialTranscript, 1_000);
+
+    expect(state.turn).toEqual({ startedAt: 1_000, inputTokens: 0, outputTokens: 0 });
+  });
+
+  it("이미 진행 중인 턴이면 다시 시작하지 않는다", () => {
+    const state = startTurn(startTurn(initialTranscript, 1_000), 5_000);
+
+    expect(state.turn?.startedAt).toBe(1_000);
+  });
+
+  it("token_usage는 턴의 토큰을 바꾸고, 진행 중인 응답 줄을 확정하지 않는다", () => {
+    const state = reduceAll([{ type: "text_delta", text: "쓰는 중" }, usage(1200, 3)], startTurn(initialTranscript, 0));
+
+    expect(state.turn).toMatchObject({ inputTokens: 1200, outputTokens: 3 });
+    expect(state.streaming?.pending).toBe("쓰는 중");
+    expect(state.done).toEqual([]);
+  });
+
+  it("턴이 없으면 token_usage는 무시한다", () => {
+    expect(reduceAll([usage(1, 1)]).turn).toBeUndefined();
+  });
+
+  it("turn_result·error·session_closed는 턴을 끝낸다", () => {
+    const events: UiEvent[] = [
+      { type: "turn_result", costUsd: 0, totalCostUsd: 0, isError: false },
+      { type: "error", message: "끊김" },
+      { type: "session_closed", totalCostUsd: 0 },
+    ];
+    for (const event of events) {
+      expect(reduceTranscript(startTurn(initialTranscript, 0), event).turn).toBeUndefined();
+    }
   });
 });
