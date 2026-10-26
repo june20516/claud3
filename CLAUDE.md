@@ -31,8 +31,8 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/ui/plain.ts` | readline 화면(`--plain`, TTY가 아닐 때), 상태 줄(권한 모드 포함), 여러 줄 입력, 입력 기록, 권한 질문, 계획 승인 질문, Shift+Tab 모드 순환. 로직 없이 이벤트를 그리기만 한다 |
 | `src/ui/ink/index.tsx` | `createInkUi` — Ink 화면 생성·실행 (기본 화면) |
 | `src/ui/ink/App.tsx` | Ink 화면 조립: 이벤트 구독, 입력·권한 흐름 |
-| `src/ui/ink/transcript.ts` | `UiEvent` → 대화 상태 리듀서 (I/O 없음). 턴 진행(`startTurn`, 대기 문구 `WAITING_VERBS`, 토큰) |
-| `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기, 진행 표시 줄(응답 대기 표시: 도는 기호·문구·경과 시간·토큰) |
+| `src/ui/ink/transcript.ts` | `UiEvent` → 대화 상태 리듀서 (I/O 없음). 턴 진행(`startTurn`, 경과 시간·토큰) |
+| `src/ui/ink/TranscriptView.tsx` | 대화 영역 그리기, 진행 표시 줄(응답 대기 표시: 도는 기호·"처리 중"·경과 시간·토큰) |
 | `src/ui/ink/InputBox.tsx` | 입력창 (Shift+Enter·`\` 여러 줄, 기록, 글자 단위 줄 넘김, 한글 IME를 위한 실제 커서 위치) |
 | `src/ui/ink/PermissionDialog.tsx` | 도구 권한·계획 승인 질문 |
 | `src/ui/ink/QuestionDialog.tsx` | AskUserQuestion 질문 창 (선택지, 복수 체크, 직접 입력은 입력창으로) |

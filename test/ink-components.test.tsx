@@ -19,7 +19,6 @@ import { Transcript } from "../src/ui/ink/TranscriptView.js";
 import { createInkUi } from "../src/ui/ink/index.js";
 import type { TranscriptState } from "../src/ui/ink/transcript.js";
 import {
-  WAITING_VERBS,
   addNotice,
   addUserInput,
   initialTranscript,
@@ -196,11 +195,11 @@ describe("Transcript", () => {
       return { ...started, turn: { ...started.turn!, inputTokens: 3200, outputTokens: 850, ...overrides } };
     }
 
-    it("턴 중에는 대기 문구, 경과 시간, 보낸·받은 토큰, 중단 안내를 한 줄로 보인다", () => {
+    it("턴 중에는 '처리 중', 경과 시간, 보낸·받은 토큰, 중단 안내를 한 줄로 보인다", () => {
       const state = turnState();
       const text = plainFrame(render(<Transcript state={state} />).lastFrame);
 
-      expect(text).toContain(`${state.turn?.verb}… (12초 · ↑ 3.2k · ↓ 850 토큰 · Esc 중단)`);
+      expect(text).toContain("처리 중… (12초 · ↑ 3.2k · ↓ 850 토큰 · Esc 중단)");
     });
 
     it("도구가 실행 중이면 문구 자리에 도구를 보인다", () => {
@@ -980,8 +979,8 @@ describe("App", () => {
     await press(stdin, "안녕");
     await press(stdin, ENTER);
 
-    await vi.waitFor(() => expect(frame()).toContain("Esc 중단"));
-    expect(WAITING_VERBS).toContain(store.getSnapshot().transcript.turn?.verb);
+    await vi.waitFor(() => expect(frame()).toContain("처리 중… ("));
+    expect(store.getSnapshot().transcript.turn).toBeDefined();
     session.emit({ type: "token_usage", inputTokens: 1500, outputTokens: 40 });
     await vi.waitFor(() => expect(frame()).toContain("↑ 1.5k · ↓ 40 토큰"));
     session.emit({ type: "turn_result", costUsd: 0.01, totalCostUsd: 0.01, isError: false });

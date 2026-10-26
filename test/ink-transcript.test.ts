@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { describePermissionMode } from "../src/permissionModes.js";
 import { CREDIT_HINT, HISTORY_HEADER } from "../src/ui/plain.js";
 import {
-  WAITING_VERBS,
   addNotice,
   addUserInput,
   commitStreaming,
@@ -245,10 +244,10 @@ describe("history 이벤트", () => {
 describe("턴 진행 표시", () => {
   const usage = (inputTokens: number, outputTokens: number): UiEvent => ({ type: "token_usage", inputTokens, outputTokens });
 
-  it("startTurn은 시작 시각과 대기 문구를 정하고 토큰을 0으로 둔다", () => {
+  it("startTurn은 시작 시각을 정하고 토큰을 0으로 둔다", () => {
     const state = startTurn(initialTranscript, 1_000);
 
-    expect(state.turn).toEqual({ startedAt: 1_000, verb: WAITING_VERBS[1_000 % WAITING_VERBS.length], inputTokens: 0, outputTokens: 0 });
+    expect(state.turn).toEqual({ startedAt: 1_000, inputTokens: 0, outputTokens: 0 });
   });
 
   it("이미 진행 중인 턴이면 다시 시작하지 않는다", () => {
