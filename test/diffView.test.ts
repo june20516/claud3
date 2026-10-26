@@ -4,6 +4,9 @@ import { DIFF_MAX_LINES, formatToolDiff } from "../src/diffView.js";
 
 const ADDED_BACKGROUND = "\u001b[48;5;22m";
 const REMOVED_BACKGROUND = "\u001b[48;5;52m";
+// 밝은 글자(256색 255). 기본 글자색에 맡기면 밝은 테마에서 검은 글자가 어두운 배경에 묻힌다.
+const LIGHT_FOREGROUND = "\u001b[38;5;255m";
+const RESET_FOREGROUND = "\u001b[39m";
 
 describe("formatToolDiff 배경색", () => {
   afterEach(() => {
@@ -27,6 +30,17 @@ describe("formatToolDiff 배경색", () => {
     expect(added).toContain(ADDED_BACKGROUND);
     expect(context).not.toContain(ADDED_BACKGROUND);
     expect(context).not.toContain(REMOVED_BACKGROUND);
+  });
+
+  it("추가·삭제 줄의 글자는 밝은색으로 명시하고 줄 끝에서 되돌린다", () => {
+    forceColor();
+    const [context, removed, added] = rawLines({ old_string: "same\nold", new_string: "same\nnew" });
+
+    for (const line of [removed, added]) {
+      expect(line).toContain(`${LIGHT_FOREGROUND}`);
+      expect(line?.endsWith(RESET_FOREGROUND)).toBe(true);
+    }
+    expect(context).not.toContain(LIGHT_FOREGROUND);
   });
 
   it("폭을 주면 바뀐 줄의 배경을 그 폭 끝까지 채운다", () => {

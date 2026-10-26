@@ -23,7 +23,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/usageStore.ts` | `~/.config/claud3/usage.json`(`CLAUD3_CONFIG_DIR`로 변경)의 누적 비용·시작 잔액 읽기/쓰기 |
 | `src/userConfig.ts` | `~/.config/claud3/config.json`의 claud3 전용 설정(기본 권한 모드) 읽기와 우선순위 |
 | `src/commands.ts` | 슬래시 명령(`/cost`·`/model`·`/mode`·`/clear`·`/resume`·`/help`) 파싱·실행과 `HELP_TEXT`. 인자 없는 `/resume`은 화면의 `pickSession`으로 고른다 |
-| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 (추가·삭제 줄 배경색) |
+| `src/diffView.ts` | Edit·Write 도구 입력을 권한 질문 앞에 보일 diff 문자열로 변환 (추가·삭제 줄 어두운 배경 + 밝은 글자색) |
 | `src/markdown.ts` | 스트리밍 텍스트를 줄 단위로 마크다운 스타일링 |
 | `src/inputHistory.ts` | 입력 기록 파일 읽기/저장 (화면 공용) |
 | `src/ui/runOptions.ts` | `UiRunOptions`(`startupCommand` 포함), `ChatUi` 타입(`prompter`·`asker`). 명령 출력(`print`)과 세션 고르기(`pickSession`)는 화면이 제공한다 |
