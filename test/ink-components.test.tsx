@@ -16,6 +16,7 @@ import { createInkUi } from "../src/ui/ink/index.js";
 import type { TranscriptState } from "../src/ui/ink/transcript.js";
 import { addNotice, addUserInput, initialTranscript, reduceTranscript } from "../src/ui/ink/transcript.js";
 import type { UiRunOptions } from "../src/ui/runOptions.js";
+import { HISTORY_HEADER } from "../src/ui/plain.js";
 
 const ENTER = "\r";
 const ESCAPE = "\u001b";
@@ -124,6 +125,15 @@ describe("Transcript", () => {
     expect(text).toContain("+ new line");
     expect(text).toContain("⎿ 실패 요약");
     expect(text).toContain("알림 문구");
+  });
+
+  it("history 항목은 머리말 아래에 이전 대화 줄을 그린다", () => {
+    const state = reduceTranscript(initialTranscript, { type: "history", lines: ["> 이전 입력", "", "이전 응답"] });
+
+    const { lastFrame } = render(<Transcript state={state} />);
+    const text = plainFrame(lastFrame);
+
+    expect(text).toContain(`${HISTORY_HEADER}\n> 이전 입력\n\n이전 응답`);
   });
 
   describe("진행 표시 줄", () => {

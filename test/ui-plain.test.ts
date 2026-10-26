@@ -11,6 +11,7 @@ import type { Session } from "../src/session.js";
 import type { UiEvent } from "../src/types.js";
 import type { UsageSnapshot } from "../src/usageStore.js";
 import {
+  HISTORY_HEADER,
   MultilineBuffer,
   createPlainUi,
   formatEvent,
@@ -113,6 +114,11 @@ describe("formatEvent", () => {
     const text = formatEvent({ type: "turn_result", costUsd: 0, totalCostUsd: 0, isError: true, errorMessage: "boom" });
     expect(text).toContain("boom");
     expect(text).not.toContain("프로모션 크레딧");
+  });
+
+  it("history는 머리말 아래에 이전 대화 줄을 그린다", () => {
+    const text = formatEvent({ type: "history", lines: ["> 이전 입력", "", "이전 응답"] });
+    expect(stripVTControlCharacters(text)).toBe(`\n${HISTORY_HEADER}\n> 이전 입력\n\n이전 응답\n`);
   });
 
   it("session_closed는 'claud3 --resume <id>'와 누적 비용 포함", () => {

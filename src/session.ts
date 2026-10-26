@@ -18,6 +18,8 @@ export interface SessionDeps {
   baseOptions: Options;
   prompter: PermissionPrompter;
   resume?: string;
+  /** resume한 세션의 이전 대화를 화면 줄로 읽는다. 없으면 이전 대화를 보이지 않는다. */
+  loadHistory?: (sessionId: string) => Promise<string[]>;
 }
 
 const DENIED_MESSAGE = "사용자가 거부했습니다";
@@ -96,7 +98,7 @@ export class Session {
   }
 
   start(): void {
-    this.connect(this.deps.resume, false);
+    this.connect(this.deps.resume, false, true);
   }
 
   send(text: string): void {
@@ -180,7 +182,7 @@ export class Session {
     this.pendingInputs.length = 0;
     this.accumulatedCostUsd = 0;
     this.currentSessionId = resume;
-    this.connect(resume, false);
+    this.connect(resume, false, true);
   }
 
   async close(): Promise<void> {
@@ -198,7 +200,8 @@ export class Session {
     }
   }
 
-  private connect(resume: string | undefined, hasReconnected: boolean): void {
+  /** showHistory면 resume한 세션의 이전 대화를 SDK 메시지보다 먼저 보낸다. 재연결 때는 보내지 않는다. */
+  private connect(resume: string | undefined, hasReconnected: boolean, showHistory = false): void {
     this.input = new AsyncQueue<SDKUserMessage>();
     const query = this.deps.queryFn({
       prompt: this.input,
@@ -211,7 +214,25 @@ export class Session {
       },
     });
     this.query = query;
-    void this.consume(query, createEventMapper(this.accumulatedCostUsd), hasReconnected);
+    const historySessionId = showHistory ? resume : undefined;
+    void this.consume(query, createEventMapper(this.accumulatedCostUsd), hasReconnected, historySessionId);
+  }
+
+  private async emitHistory(query: SessionQuery, sessionId: string): Promise<void> {
+    const { loadHistory } = this.deps;
+    if (!loadHistory) {
+      return;
+    }
+    try {
+      const lines = await loadHistory(sessionId);
+      if (lines.length > 0 && this.query === query) {
+        this.emit({ type: "history", lines });
+      }
+    } catch (error) {
+      if (this.query === query) {
+        this.emit({ type: "error", message: `이전 대화를 불러오지 못했습니다: ${errorText(error)}` });
+      }
+    }
   }
 
   private deliver(text: string): void {
@@ -223,7 +244,12 @@ export class Session {
     query: SessionQuery,
     mapEvents: (message: SDKMessage) => UiEvent[],
     hasReconnected: boolean,
+    historySessionId: string | undefined,
   ): Promise<void> {
+    if (historySessionId !== undefined) {
+      // query는 이미 열려 있으므로 기록을 읽는 동안 SDK 메시지는 쌓였다가 기록 다음에 처리된다.
+      await this.emitHistory(query, historySessionId);
+    }
     try {
       for await (const message of query) {
         if (this.query !== query) {

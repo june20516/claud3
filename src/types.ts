@@ -2,6 +2,8 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 
 export type UiEvent =
   | { type: "session_start"; sessionId: string; model: string; apiKeySource: string }
+  /** resume한 세션의 이전 대화. 화면에 그릴 줄들(응답은 마크다운 스타일 적용). */
+  | { type: "history"; lines: string[] }
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolUseId: string; name: string; summary: string; input: Record<string, unknown> }
   | { type: "tool_end"; toolUseId: string; isError: boolean; summary: string }

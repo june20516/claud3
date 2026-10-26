@@ -85,7 +85,14 @@ class FakeSdk {
   };
 }
 
-function createSession(options: { prompter?: PermissionPrompter; resume?: string; permissionMode?: PermissionMode } = {}) {
+function createSession(
+  options: {
+    prompter?: PermissionPrompter;
+    resume?: string;
+    permissionMode?: PermissionMode;
+    loadHistory?: (sessionId: string) => Promise<string[]>;
+  } = {},
+) {
   const sdk = new FakeSdk();
   const events: UiEvent[] = [];
   const session = new Session({
@@ -93,6 +100,7 @@ function createSession(options: { prompter?: PermissionPrompter; resume?: string
     baseOptions: { cwd: "/work", ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }) },
     prompter: options.prompter ?? (async () => "allow"),
     resume: options.resume,
+    ...(options.loadHistory === undefined ? {} : { loadHistory: options.loadHistory }),
   });
   session.onEvent((event) => events.push(event));
   return { sdk, session, events };
@@ -458,6 +466,80 @@ describe("Session", () => {
     await session.replace();
     await canUseTool(sdk.calls[1]!)("Edit", { file_path: "/b" }, toolOptions);
     expect(prompter).toHaveBeenCalledTimes(1);
+  });
+
+  describe("이전 대화 불러오기", () => {
+    it("resume으로 시작하면 이전 대화를 SDK 이벤트보다 먼저 history 이벤트로 보낸다", async () => {
+      const loadHistory = vi.fn(async () => ["> 이전 입력", "", "이전 응답"]);
+      const { session, events } = createSession({ resume: "old", loadHistory });
+      session.start();
+      session.send("a");
+      await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+
+      expect(loadHistory).toHaveBeenCalledWith("old");
+      expect(events[0]).toEqual({ type: "history", lines: ["> 이전 입력", "", "이전 응답"] });
+      expect(eventsOfType(events, "history")).toHaveLength(1);
+    });
+
+    it("resume 없이 시작하거나 replace()로 새 대화를 열면 불러오지 않는다", async () => {
+      const loadHistory = vi.fn(async () => ["x"]);
+      const { session, events } = createSession({ loadHistory });
+      session.start();
+      await session.replace();
+      session.send("a");
+      await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+
+      expect(loadHistory).not.toHaveBeenCalled();
+      expect(eventsOfType(events, "history")).toHaveLength(0);
+    });
+
+    it("replace(resume)로 세션을 옮기면 그 세션의 이전 대화를 보낸다", async () => {
+      const loadHistory = vi.fn(async (sessionId: string) => [`${sessionId}의 기록`]);
+      const { session, events } = createSession({ loadHistory });
+      session.start();
+      await session.replace("other");
+
+      await vi.waitFor(() => expect(eventsOfType(events, "history")).toEqual([{ type: "history", lines: ["other의 기록"] }]));
+    });
+
+    it("기록이 비어 있으면 history 이벤트를 보내지 않는다", async () => {
+      const { session, events } = createSession({ resume: "old", loadHistory: async () => [] });
+      session.start();
+      session.send("a");
+      await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+
+      expect(eventsOfType(events, "history")).toHaveLength(0);
+    });
+
+    it("불러오기에 실패하면 error 이벤트로 알리고 대화는 계속한다", async () => {
+      const { session, events } = createSession({
+        resume: "old",
+        loadHistory: async () => {
+          throw new Error("파일 없음");
+        },
+      });
+      session.start();
+      session.send("a");
+      await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+
+      expect(eventsOfType(events, "error")).toEqual([{ type: "error", message: "이전 대화를 불러오지 못했습니다: 파일 없음" }]);
+    });
+
+    it("연결이 끊겨 다시 붙을 때는 다시 불러오지 않는다", async () => {
+      const loadHistory = vi.fn(async () => ["이전"]);
+      const { sdk, session, events } = createSession({ resume: "old", loadHistory });
+      session.start();
+      session.send("a");
+      await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(1));
+      sdk.failOnNextInput(new Error("끊김"));
+      session.send("b");
+      await vi.waitFor(() => expect(sdk.calls).toHaveLength(2));
+      session.send("c");
+      await vi.waitFor(() => expect(eventsOfType(events, "turn_result")).toHaveLength(2));
+
+      expect(loadHistory).toHaveBeenCalledTimes(1);
+      expect(eventsOfType(events, "history")).toHaveLength(1);
+    });
   });
 
   describe("권한 모드", () => {

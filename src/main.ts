@@ -9,6 +9,7 @@ import { buildBaseOptions } from "./config.js";
 import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionModes.js";
 import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
+import { loadHistoryLines } from "./sessionHistory.js";
 import { createInkUi } from "./ui/ink/index.js";
 import { createPlainUi } from "./ui/plain.js";
 import type { ChatUi } from "./ui/runOptions.js";
@@ -127,7 +128,13 @@ async function main(): Promise<number> {
     })
       ? createPlainUi({ input: process.stdin, output: process.stdout, historyFile })
       : createInkUi({ stdin: process.stdin, stdout: process.stdout, historyFile });
-  const session = new Session({ queryFn: query, baseOptions, prompter: ui.prompter, resume: args.resume });
+  const session = new Session({
+    queryFn: query,
+    baseOptions,
+    prompter: ui.prompter,
+    resume: args.resume,
+    loadHistory: (sessionId) => loadHistoryLines(sessionId),
+  });
   await ui.run(session, {
     commandContext: {
       session,

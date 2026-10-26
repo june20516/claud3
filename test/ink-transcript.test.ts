@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import { describePermissionMode } from "../src/permissionModes.js";
-import { CREDIT_HINT } from "../src/ui/plain.js";
+import { CREDIT_HINT, HISTORY_HEADER } from "../src/ui/plain.js";
 import {
   addNotice,
   addUserInput,
@@ -227,5 +227,15 @@ describe("reduceTranscript", () => {
     reduceTranscript(before, { type: "tool_end", toolUseId: "t1", isError: false, summary: "" });
     reduceTranscript(before, { type: "text_delta", text: "x" });
     expect(before).toEqual(snapshot);
+  });
+});
+
+describe("history 이벤트", () => {
+  it("이전 대화 줄을 history 항목으로 done에 추가한다", () => {
+    const state = reduceAll([{ type: "history", lines: ["> 이전 입력", "", "이전 응답"] }]);
+
+    expect(state.done).toEqual([{ kind: "history", id: 0, text: "> 이전 입력\n\n이전 응답" }]);
+    expect(state.nextId).toBe(1);
+    expect(HISTORY_HEADER).toContain("이전 대화");
   });
 });

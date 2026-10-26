@@ -13,7 +13,15 @@ export type AssistantItem = { kind: "assistant"; id: number; text: string; attac
 /** attached면 바로 앞 항목(도구 줄)에 빈 줄 없이 붙인다. */
 export type NoticeItem = { kind: "notice"; id: number; tone: NoticeTone; text: string; attached?: boolean };
 
-export type TranscriptItem = { kind: "user"; id: number; text: string } | AssistantItem | ToolItem | NoticeItem;
+/** resume한 세션의 이전 대화. 머리말 아래에 그대로 그린다. */
+export type HistoryItem = { kind: "history"; id: number; text: string };
+
+export type TranscriptItem =
+  | { kind: "user"; id: number; text: string }
+  | AssistantItem
+  | ToolItem
+  | NoticeItem
+  | HistoryItem;
 
 /** 동적 영역에 한 줄로 보이는 실행 중 표시. */
 export interface RunningTool {
@@ -145,6 +153,10 @@ export function reduceTranscript(state: TranscriptState, event: UiEvent): Transc
         model: event.model,
         header: `claud3 · API key(${event.apiKeySource}) · Agent SDK · ${event.model}`,
       };
+    case "history": {
+      const item: HistoryItem = { kind: "history", id: committed.nextId, text: event.lines.join("\n") };
+      return { ...committed, done: [...committed.done, item], nextId: committed.nextId + 1 };
+    }
     case "tool_start": {
       // plain처럼 도구 줄과 diff는 바로 확정하고, 동적 영역에는 실행 중 표시 한 줄만 둔다.
       const tool: ToolItem = {

@@ -67,6 +67,7 @@ claud3/
 ```ts
 type UiEvent =
   | { type: "session_start"; sessionId: string; model: string; apiKeySource: string }
+  | { type: "history"; lines: string[] } // resume한 세션의 이전 대화 (추가 2026-10-26)
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolUseId: string; name: string; summary: string }
   | { type: "tool_end"; toolUseId: string; isError: boolean; summary: string }
@@ -81,7 +82,7 @@ type UiEvent =
 3. **응답**: SDK 메시지를 `events`가 `UiEvent`로 바꾸고, UI가 그린다. 텍스트는 `includePartialMessages`로 실시간 출력한다.
 4. **권한**: SDK가 `canUseTool`을 부르면 `session`이 `PermissionPrompter`에 묻는다. 응답은 y(이번만 허용), n(거부), a(이번 세션 동안 이 도구 항상 허용)다. 설정의 allow 규칙에 해당하면 SDK가 묻지 않는다. 언제 묻는지는 권한 모드(6절 "권한 모드")가 정하고, plan 모드의 계획 승인(`ExitPlanMode`)은 y/e/n으로 따로 묻는다.
 5. **중단**: Esc 또는 실행 중 Ctrl+C는 `interrupt()`로 현재 턴만 멈춘다. 대기 중 Ctrl+C 두 번 또는 Ctrl+D는 종료한다.
-6. **종료**: 세션 ID와 누적 비용을 출력한다. `claud3 --resume <id>`로 이어서 쓴다.
+6. **종료**: 세션 ID와 누적 비용을 출력한다. `claud3 --resume <id>`로 이어서 쓴다. 이어서 열면 이전 대화의 마지막 100줄을 먼저 보여 준다(6절 "resume 시 이전 대화 표시").
 
 ## 5. 에러 처리
 
@@ -180,6 +181,12 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
   - 입력창은 터미널의 실제 커서를 커서 칸에 둔다(Ink `useCursor`). 한글 IME가 조합 중인 글자를 상태 줄 아래가 아니라 입력창에 그리게 하기 위해서다(승격 후 사용 중 발견, 2026-10-22).
   - 진행 표시 줄(대화와 입력창 사이 한 줄)은 진행 중 응답 줄(넘치면 끝부분), 실행 중 도구(여럿이면 나머지 개수), 빈 줄 중 하나만 보여 높이가 늘 같다. 응답이 나오는 동안 상태 줄이 위아래로 움직이지 않는다.
   - diff의 추가·삭제 줄은 어두운 초록·빨강 배경(256색 22·52)을 깔고, Ink 화면에서는 터미널 폭 끝까지 채운다. 상태 줄은 터미널 폭 전체의 어두운 회색 띠(`#303030`)이고, 글자색은 밝은 회색(`#d0d0d0`)으로 명시한다. 터미널 기본 글자색에 맡기면 밝은 테마에서 배경과 구분되지 않기 때문이다.
+
+### resume 시 이전 대화 표시 (추가 2026-10-26, 3단계 이후)
+
+- `claud3 --resume <id>`와 `/resume <id>`로 세션을 열면 이전 대화의 마지막 100줄을 "── 이전 대화 ──" 머리말 아래에 먼저 그린다. plain·Ink 화면 모두 같다.
+- 기록은 SDK `getSessionMessages(sessionId)`로 로컬 세션 파일에서 읽는다(API 호출 없음). `sessionHistory`가 화면과 같은 모양의 줄로 바꾼다: 사용자 입력은 `> `, 응답은 마크다운, 도구 호출은 `⏺ 이름(요약)`, 블록 사이는 빈 줄. thinking, 도구 결과, 서브에이전트 메시지, 메타·compact 요약, 슬래시 명령 기록은 뺀다. 100줄은 터미널 줄바꿈 전 논리 줄 기준이다.
+- `session`은 주입받은 `loadHistory`로 기록을 읽어 SDK 메시지보다 먼저 `history` 이벤트로 보낸다. 연결이 끊겨 다시 붙을 때는 보내지 않는다. 읽지 못하면 `error` 이벤트로 알리고 대화는 계속한다.
 
 ## 7. 자기 개발 (self-hosting)
 
