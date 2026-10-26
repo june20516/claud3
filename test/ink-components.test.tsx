@@ -11,6 +11,8 @@ import { App, InkUiStore, connectSession } from "../src/ui/ink/App.js";
 import { InputBox, inputCursorOffset } from "../src/ui/ink/InputBox.js";
 import { PermissionDialog } from "../src/ui/ink/PermissionDialog.js";
 import { QuestionDialog } from "../src/ui/ink/QuestionDialog.js";
+import { SessionPicker } from "../src/ui/ink/SessionPicker.js";
+import type { SessionListItem } from "../src/sessionList.js";
 import { StatusBar } from "../src/ui/ink/StatusBar.js";
 import { Transcript } from "../src/ui/ink/TranscriptView.js";
 import { createInkUi } from "../src/ui/ink/index.js";
@@ -77,7 +79,7 @@ class FakeSession {
   });
   readonly setModel = vi.fn(async () => undefined);
   readonly listModels = vi.fn(async () => []);
-  readonly replace = vi.fn(async () => undefined);
+  readonly replace = vi.fn(async (_resume?: string) => undefined);
 
   onEvent(listener: (event: UiEvent) => void): void {
     this.listeners.push(listener);
@@ -101,19 +103,34 @@ class FakeSession {
 const SNAPSHOT: UsageSnapshot = { startingCreditUsd: 100, spentUsd: 0.5 };
 
 function renderApp(
-  overrides: { recordUsage?: UiRunOptions["recordUsage"]; readUsage?: UiRunOptions["commandContext"]["readUsage"] } = {},
+  overrides: {
+    recordUsage?: UiRunOptions["recordUsage"];
+    readUsage?: UiRunOptions["commandContext"]["readUsage"];
+    listSessions?: UiRunOptions["commandContext"]["listSessions"];
+    startupCommand?: string;
+  } = {},
 ) {
   const session = new FakeSession();
   const store = new InkUiStore();
   const recordUsage = overrides.recordUsage ?? vi.fn(async (_costUsd: number) => SNAPSHOT);
   const options: UiRunOptions = {
-    commandContext: { session: session.asSession(), readUsage: overrides.readUsage ?? (async () => SNAPSHOT) },
+    commandContext: {
+      session: session.asSession(),
+      readUsage: overrides.readUsage ?? (async () => SNAPSHOT),
+      ...(overrides.listSessions === undefined ? {} : { listSessions: overrides.listSessions }),
+    },
     recordUsage,
   };
   const onClosed = vi.fn();
   connectSession(store, session.asSession(), options, onClosed);
   const view = render(
-    <App store={store} session={session.asSession()} commandContext={options.commandContext} initialHistory={[]} />,
+    <App
+      store={store}
+      session={session.asSession()}
+      commandContext={options.commandContext}
+      initialHistory={[]}
+      {...(overrides.startupCommand === undefined ? {} : { startupCommand: overrides.startupCommand })}
+    />,
   );
   const frame = (): string => plainFrame(view.lastFrame);
   return { ...view, session, store, recordUsage, onClosed, frame };
@@ -343,6 +360,56 @@ describe("QuestionDialog", () => {
     expect(onAnswer).not.toHaveBeenCalled();
     expect(onStopTyping).toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+function sessionItems(count: number): SessionListItem[] {
+  const now = Date.now();
+  return Array.from({ length: count }, (_, index) => ({
+    sessionId: `id-${index + 1}`,
+    title: `작업 ${index + 1}`,
+    lastModified: now - (index + 1) * 3_600_000,
+  }));
+}
+
+describe("SessionPicker", () => {
+  function renderPicker(items: SessionListItem[]) {
+    const onPick = vi.fn((_sessionId: string) => undefined);
+    const onCancel = vi.fn();
+    const view = render(<SessionPicker items={items} onPick={onPick} onCancel={onCancel} />);
+    return { ...view, onPick, onCancel, frame: () => plainFrame(view.lastFrame) };
+  }
+
+  it("제목 아래에 마지막 대화 시간을 보이고 첫 항목을 고른 상태로 시작한다", () => {
+    const text = renderPicker(sessionItems(2)).frame();
+
+    expect(text).toContain("이어서 열 세션 (최신순) 1/2");
+    expect(text).toMatch(/❯ 작업 1 [^\n]*\n[^\n]* \d+\/\d{2} \d{2}:\d{2} · 1시간 전/);
+    expect(text).toMatch(/ {2}작업 2 [^\n]*\n[^\n]* · 2시간 전/);
+  });
+
+  it("↓·Enter는 고른 세션 ID를, Esc는 취소를 알린다", async () => {
+    const pick = renderPicker(sessionItems(3));
+    await press(pick.stdin, DOWN);
+    await press(pick.stdin, ENTER);
+    expect(pick.onPick).toHaveBeenCalledWith("id-2");
+
+    const cancel = renderPicker(sessionItems(3));
+    await press(cancel.stdin, ESCAPE);
+    expect(cancel.onCancel).toHaveBeenCalled();
+  });
+
+  it("목록이 길면 고른 항목이 보이도록 창을 옮긴다", async () => {
+    const { stdin, frame } = renderPicker(sessionItems(20));
+    expect(frame()).not.toContain("작업 15");
+
+    for (let step = 0; step < 14; step++) {
+      await press(stdin, DOWN);
+    }
+
+    expect(frame()).toContain("❯ 작업 15");
+    expect(frame()).toContain("15/20");
+    expect(frame()).not.toMatch(/작업 1 /);
   });
 });
 
@@ -720,6 +787,43 @@ describe("App", () => {
     await press(stdin, SHIFT_TAB);
 
     expect(session.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  describe("세션 고르기", () => {
+    it("/resume은 목록 창을 띄우고 고른 세션으로 이동한다", async () => {
+      const { stdin, store, session, frame } = renderApp({ listSessions: async () => sessionItems(3) });
+
+      await press(stdin, "/resume");
+      await press(stdin, ENTER);
+      await vi.waitFor(() => expect(frame()).toContain("이어서 열 세션"));
+      await press(stdin, DOWN);
+      await press(stdin, ENTER);
+
+      await vi.waitFor(() => expect(session.replace).toHaveBeenCalledWith("id-2"));
+      expect(store.getSnapshot().picker).toBeUndefined();
+      expect(session.sent).toEqual([]);
+    });
+
+    it("startupCommand가 있으면 시작하자마자 실행하고, Esc는 취소한다", async () => {
+      const { stdin, session, frame } = renderApp({ listSessions: async () => sessionItems(2), startupCommand: "/resume" });
+
+      await vi.waitFor(() => expect(frame()).toContain("이어서 열 세션"));
+      await press(stdin, ESCAPE);
+
+      await vi.waitFor(() => expect(frame()).toContain("세션 선택을 취소했습니다"));
+      expect(session.replace).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+C는 목록 창을 닫는다", async () => {
+      const { stdin, store } = renderApp({ listSessions: async () => sessionItems(2) });
+
+      await press(stdin, "/resume");
+      await press(stdin, ENTER);
+      await vi.waitFor(() => expect(store.getSnapshot().picker).toBeDefined());
+      await press(stdin, CTRL_C);
+
+      await vi.waitFor(() => expect(store.getSnapshot().picker).toBeUndefined());
+    });
   });
 
   describe("AskUserQuestion", () => {

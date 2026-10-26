@@ -5,7 +5,10 @@ import type { UsageSnapshot } from "../usageStore.js";
 
 /** 화면이 공통으로 받는 실행 옵션. print는 화면이 직접 제공한다. */
 export interface UiRunOptions {
-  commandContext: Omit<CommandContext, "print">;
+  /** print와 pickSession은 화면이 직접 제공한다. */
+  commandContext: Omit<CommandContext, "print" | "pickSession">;
+  /** 시작하자마자 실행할 명령 (값 없는 --resume이면 "/resume"). */
+  startupCommand?: string;
   recordUsage: (costUsd: number) => Promise<UsageSnapshot>;
 }
 

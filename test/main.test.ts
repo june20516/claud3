@@ -49,8 +49,10 @@ describe("parseArgs", () => {
     expect(parseArgs(["-h"]).help).toBe(true);
   });
 
-  it("값 없는 --resume는 오류를 던진다", () => {
-    expect(() => parseArgs(["--resume"])).toThrow();
+  it("값 없는 --resume는 세션 목록에서 고르기다", () => {
+    expect(parseArgs(["--resume"])).toEqual({ pickResume: true, help: false, version: false, plain: false });
+    expect(parseArgs(["--resume", "--plain"])).toEqual({ pickResume: true, help: false, version: false, plain: true });
+    expect(parseArgs(["--resume", "abc"]).pickResume).toBeUndefined();
   });
 
   it("알 수 없는 옵션은 오류를 던진다", () => {

@@ -187,6 +187,10 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
 - `claud3 --resume <id>`와 `/resume <id>`로 세션을 열면 이전 대화의 마지막 100줄을 "── 이전 대화 ──" 머리말 아래에 먼저 그린다. plain·Ink 화면 모두 같다.
 - 기록은 SDK `getSessionMessages(sessionId)`로 로컬 세션 파일에서 읽는다(API 호출 없음). `sessionHistory`가 화면과 같은 모양의 줄로 바꾼다: 사용자 입력은 `> `, 응답은 마크다운, 도구 호출은 `⏺ 이름(요약)`, 블록 사이는 빈 줄. thinking, 도구 결과, 서브에이전트 메시지, 메타·compact 요약, 슬래시 명령 기록은 뺀다. 100줄은 터미널 줄바꿈 전 논리 줄 기준이다.
 - `session`은 주입받은 `loadHistory`로 기록을 읽어 SDK 메시지보다 먼저 `history` 이벤트로 보낸다. 연결이 끊겨 다시 붙을 때는 보내지 않는다. 읽지 못하면 `error` 이벤트로 알리고 대화는 계속한다.
+- 세션 고르기(추가 2026-10-26): ID 없는 `/resume`과 `claud3 --resume`은 Claude Code처럼 세션 목록에서 고른다.
+  - `sessionList`가 SDK `listSessions({ dir: cwd, limit: 50 })`로 이 프로젝트(와 git worktree)의 세션을 읽어 마지막 수정 시간 기준 최신순으로 정렬한다. 제목은 SDK `summary`(직접 지은 제목, 자동 요약, 첫 프롬프트 순)의 첫 줄, 시간은 `10/26 14:03 · 3분 전`(올해가 아니면 연도 포함). 지금 세션은 뺀다.
+  - 고르기는 화면이 제공한다(`CommandContext.pickSession`). Ink는 `SessionPicker` 창(세션마다 제목 줄과 흐린 시간 줄, 8개씩 보이며 고른 항목을 따라 스크롤, ↑/↓·Enter·Esc, Ctrl+C 취소), plain은 번호 목록과 `번호 › `(빈 답은 취소). 화면이 고르기를 주지 않으면 사용법을 출력한다.
+  - `claud3 --resume`(값 없음)은 새 세션으로 시작한 뒤 `startupCommand: "/resume"`으로 목록을 띄운다. 취소하면 새 세션으로 이어진다. node `parseArgs`가 선택적 값을 지원하지 않으므로 값 없는 `--resume`(맨 끝이거나 다음이 옵션)은 미리 빼서 `pickResume`으로 둔다.
 
 ### AskUserQuestion 처리 (추가 2026-10-26, 3단계 이후)
 

@@ -38,6 +38,7 @@ export function createInkUi({ stdin, stdout, historyFile }: InkUiOptions): ChatU
             commandContext={options.commandContext}
             initialHistory={initialHistory}
             saveHistory={saveHistory}
+            {...(options.startupCommand === undefined ? {} : { startupCommand: options.startupCommand })}
           />,
           { stdin, stdout, exitOnCtrlC: false },
         );

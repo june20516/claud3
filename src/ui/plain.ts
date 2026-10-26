@@ -18,12 +18,15 @@ import type {
 } from "../types.js";
 import { remainingCreditUsd } from "../usageStore.js";
 import { formatQuestionPrompt, parseQuestionAnswer } from "../userQuestions.js";
+import { formatSessionTime } from "../sessionList.js";
+import type { SessionListItem } from "../sessionList.js";
 import type { ChatUi, UiRunOptions } from "./runOptions.js";
 
 const PROMPT = "> ";
 const CONTINUATION_PROMPT = "… ";
 const EXIT_CONFIRM_WINDOW_MS = 2000;
 const ANSWER_PROMPT = "답 › ";
+const PICK_PROMPT = "번호 › ";
 const PLAN_QUESTION = "\n계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획 › ";
 export const HISTORY_HEADER = "── 이전 대화 ──";
 export const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
@@ -299,6 +302,23 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
     return answers;
   };
 
+  /** 세션 목록을 번호와 함께 보이고 번호로 고르게 한다. 빈 답이나 Ctrl+C는 취소. */
+  const askSession = async (items: SessionListItem[]): Promise<string | undefined> => {
+    const now = Date.now();
+    const lines = items.map((item, index) => `  ${index + 1}. ${item.title} · ${formatSessionTime(item.lastModified, now)}`);
+    write(`\n이어서 열 세션 (최신순, 빈 줄은 취소)\n${lines.join("\n")}\n`);
+    for (;;) {
+      const result = await ask(PICK_PROMPT, undefined);
+      if (result.kind === "cancelled" || result.text.trim() === "") {
+        return undefined;
+      }
+      const picked = /^\d+$/.test(result.text.trim()) ? items[Number(result.text.trim()) - 1] : undefined;
+      if (picked !== undefined) {
+        return picked.sessionId;
+      }
+    }
+  };
+
   // readline은 질문을 한 번에 하나만 받을 수 있으므로 동시에 온 권한 요청과 질문을 차례로 묻는다.
   let questionQueue: Promise<unknown> = Promise.resolve();
   const enqueue = <T>(askNext: () => Promise<T>): Promise<T> => {
@@ -308,13 +328,14 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
   };
   const prompter: PermissionPrompter = (request) => enqueue(() => askPermission(request));
   const asker: UserQuestionPrompter = (request) => enqueue(() => askQuestions(request));
+  const pickSession = (items: SessionListItem[]): Promise<string | undefined> => enqueue(() => askSession(items));
 
   const interruptTurn = (session: Session): void => {
     void session.interrupt();
     write(`\n${styleText("yellow", "(중단됨)")}\n`);
   };
 
-  const run = (session: Session, { commandContext, recordUsage }: UiRunOptions): Promise<void> =>
+  const run = (session: Session, { commandContext, recordUsage, startupCommand }: UiRunOptions): Promise<void> =>
     new Promise((resolve) => {
       activeSession = session;
       const multiline = new MultilineBuffer();
@@ -389,7 +410,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
           promptIfIdle();
           return;
         }
-        runCommand(parsed, { ...commandContext, print })
+        runCommand(parsed, { ...commandContext, print, pickSession })
           .catch((error: unknown) => write(errorLine(errorText(error))))
           .finally(promptIfIdle);
       };
@@ -453,7 +474,12 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
       }
 
       session.start();
-      rl.prompt();
+      if (startupCommand === undefined) {
+        rl.prompt();
+      } else {
+        // 명령이 끝나면 submit이 프롬프트를 띄운다.
+        submit(startupCommand);
+      }
     });
 
   return { prompter, asker, run };

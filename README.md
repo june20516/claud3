@@ -26,6 +26,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 |---|---|
 | `claud3` | 새 세션 시작 |
 | `claud3 --model <ID>` | 모델을 지정해 시작 |
+| `claud3 --resume` | 이 프로젝트의 세션 목록(최신순, 제목·마지막 대화 시간)에서 골라 이어서 시작. 취소하면 새 세션 |
 | `claud3 --resume <ID>` | 이전 세션을 이어서 시작 (이전 대화의 마지막 100줄을 먼저 보여 줌) |
 | `claud3 --permission-mode <mode>` | 권한 모드를 지정해 시작 (`default`, `acceptEdits`, `plan`, `auto`) |
 | `claud3 --help` · `--version` | 도움말 · 버전 |
@@ -44,6 +45,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | `/model` | 현재 모델과 쓸 수 있는 모델 목록 |
 | `/model <ID>` | 모델 바꾸기 (예: `/model claude-sonnet-5-5`). 바꾼 뒤 첫 턴은 캐시가 새로 만들어져 비쌉니다 |
 | `/clear` | 새 대화 시작 |
+| `/resume` | 이 프로젝트의 세션 목록(최신순, 제목·마지막 대화 시간)에서 골라 이동. Ink 화면은 ↑/↓·Enter·Esc, plain 화면은 번호 |
 | `/resume <ID>` | 이전 세션으로 이동, 이전 대화의 마지막 100줄 표시 (종료할 때 세션 ID가 출력됩니다) |
 | `/help` | 도움말 |
 | `/mode` | 현재 권한 모드와 선택지 |
@@ -95,6 +97,7 @@ Claude가 선택지를 주고 물으면 질문 창이 뜹니다. 질문이 여�
 | 입력 | 설명 |
 |---|---|
 | `claud3 --model <ID>` | 모델 지정해 시작 |
+| `claud3 --resume` | 세션 목록에서 골라 이어서 시작 |
 | `claud3 --resume <ID>` | 세션 이어서 시작 |
 | `claud3 --permission-mode <이름>` | 권한 모드 지정해 시작 |
 | `claud3 --plain` | readline 화면으로 시작 |
