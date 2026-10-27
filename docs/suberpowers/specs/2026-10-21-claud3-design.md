@@ -211,6 +211,10 @@ SDK `permissionMode` 중 네 가지를 claud3에서 고른다. `bypassPermission
 - 선택지의 `preview`(`toolConfig.askUserQuestion.previewFormat`)는 쓰지 않는다.
 - 도구 줄 요약은 첫 질문 문장(여럿이면 `질문 N개: …`)이다.
 
+### 서브에이전트·백그라운드 작업 표시 (설계 2026-10-27)
+
+- 별도 spec: `docs/suberpowers/specs/2026-10-27-task-panel-design.md`. 서브에이전트 메시지 분리, 하단 작업 목록, ↓로 고르는 관찰 패널과 중지를 3단계로 나눠 구현한다.
+
 ## 7. 자기 개발 (self-hosting)
 
 1단계가 끝나면 2·3단계는 `claud3` 자신으로 개발한다. 개발 중 깨진 빌드가 개발 도구 자체를 망가뜨리지 않도록 다음을 지킨다.
