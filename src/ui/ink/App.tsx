@@ -1,4 +1,4 @@
-import { Box, useBoxMetrics, useInput } from "ink";
+import { Box, useInput } from "ink";
 import type { DOMElement } from "ink";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { CommandContext } from "../../commands.js";
@@ -27,6 +27,7 @@ import { QuestionDialog } from "./QuestionDialog.js";
 import { SessionPicker } from "./SessionPicker.js";
 import { StatusBar } from "./StatusBar.js";
 import { Transcript } from "./TranscriptView.js";
+import { useBoxTop } from "./useBoxTop.js";
 import type { NoticeTone, TranscriptState } from "./transcript.js";
 import {
   addNotice,
@@ -318,7 +319,7 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
   const lastIdleInterruptAt = useRef(0);
   // Static은 레이아웃 밖(absolute)이므로 입력창의 top이 곧 동적 출력 맨 위에서 센 행이다.
   const inputBoxRef = useRef<DOMElement>(null);
-  const inputBoxMetrics = useBoxMetrics(inputBoxRef);
+  const inputBoxTop = useBoxTop(inputBoxRef);
 
   const interruptTurn = (): void => {
     void session.interrupt();
@@ -458,7 +459,7 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
       )}
       <Box ref={inputBoxRef} marginTop={1}>
         <InputBox
-          originRow={inputBoxMetrics.hasMeasured ? inputBoxMetrics.top : undefined}
+          originRow={inputBoxTop}
           isActive={dialog === undefined && picker === undefined && (question === undefined || question.typing)}
           initialHistory={initialHistory}
           onSubmit={submit}

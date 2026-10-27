@@ -38,6 +38,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/ui/ink/QuestionDialog.tsx` | AskUserQuestion 질문 창 (선택지, 복수 체크, 직접 입력은 입력창으로) |
 | `src/ui/ink/SessionPicker.tsx` | `/resume` 세션 목록 창 (최신순, 제목·시간, 스크롤) |
 | `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 (폭 전체 배경 띠, 왼쪽 디렉터리·브랜치, 오른쪽 모델·모드·비용, 좁으면 디렉터리부터 자름) |
+| `src/ui/ink/useBoxTop.ts` | 입력창 top 측정(실제 커서 위치용). 값이 바뀔 때만 setState — ink `useBoxMetrics`는 연속 갱신에서 "Maximum update depth"를 일으켜 쓰지 않는다 |
 | `src/ui/ink/terminalSize.ts` | 터미널 폭 조회 (입력창 커서·diff 배경 폭·상태 줄 배치) |
 | `src/main.ts` | 인자 처리와 조립. `--plain`이거나 stdin·stdout이 TTY가 아니면 plain 화면, 아니면 Ink 화면 |
 | `scripts/promote.sh`, `scripts/rollback.sh` | 안정판 승격·되돌리기 |
