@@ -33,7 +33,7 @@
 | 인격 만들기 | 세션 안 `/persona-create <이름>`. 조사(선택) → 설문(조사 결과로 미리 채움) → 확인 | 기존 `QuestionDialog`와 SDK 설정을 재사용한다 |
 | 조사 | 별도 `query()`: 도구 `WebSearch`·`WebFetch`만, `settingSources: []`, `outputFormat` JSON schema, `maxTurns` 15, `maxBudgetUsd` 0.5 | 쓰기 도구가 없어 링크 속 지시문이 있어도 피해가 초안 수준에 그친다 |
 | 행동 묘사 형식 | 줄 전체가 `(...)`인 줄. 코드 블록 안은 제외 | 문장 안 괄호나 코드를 행동으로 오인하지 않는다. `markdown.ts`의 줄 단위 처리와 맞는다 |
-| 화면 | 대화 안 행동 줄은 흐린 기울임체·인격 색, 입력창 위에 캐릭터 패널(얼굴·막대·최근 행동). plain 화면은 대화 안 표시만 | task-panel spec의 작업 목록은 입력창 아래라 겹치지 않는다 |
+| 화면 | 대화 안 행동 줄은 흐린 기울임체·자홍색, 입력창 위에 캐릭터 패널(얼굴·막대·최근 행동). plain 화면은 대화 안 표시만 | task-panel spec의 작업 목록은 입력창 아래라 겹치지 않는다 |
 | 저장 위치 | `<configDir>/personas/<이름>.json`(인격), `<이름>.mood.json`(기분·기억) | 인격마다 기분이 섞이지 않는다. `configDir()`은 `CLAUD3_CONFIG_DIR`을 따른다 |
 | 메모리 신호 | darwin에서 `sysctl -n kern.memorystatus_level`(여유율 %) | `os.freemem()`은 캐시를 사용 중으로 쳐서 맥에서 항상 90%대 사용률로 나온다(확인: os 94% 사용 / sysctl 81% 여유) |
 
@@ -204,10 +204,12 @@
 | `src/persona/mood.ts` | `MoodState`, `applyEvent`, 감쇠, 방향·세기, 부호 전환, 업무 시간 상한 | 없음 |
 | `src/persona/turnEvents.ts` | hook 입력·사용자 입력 → `MoodEvent[]` (반복 유사도, 키워드, 테스트 성공 판정) | 없음 |
 | `src/persona/signals.ts` | 시계·요일·업무 시간·쉰 시간, 메모리 여유율·CPU 부하 → `MoodEvent[]`. 시계·명령 실행·`os`는 주입 | 읽기 |
+| `src/persona/oneShot.ts` | 도구를 제한한 one-shot `query()` 실행과 `structured_output`·비용 읽기 (queryFn 주입) | 조립 |
 | `src/persona/actions.ts` | 행동 줄 추출, 반응 찾기, `judgeReaction`(queryFn 주입) | 조립 |
 | `src/persona/prompt.ts` | 시스템 append 문자열, 턴별 상태 문자열 | 없음 |
 | `src/persona/store.ts` | 인격·기분 파일 읽기/쓰기, 인격 목록 | 파일 |
 | `src/persona/runtime.ts` | 위를 조립해 SDK `hooks`와 `systemPrompt.append`를 만들고, 상태 변경을 구독할 수 있게 한다(`subscribe`). hook 내부 예외는 잡아서 그 턴만 기분 처리를 건너뛴다 | 조립 |
+| `src/persona/bootstrap.ts` | `--persona` 이름으로 인격·기분을 읽어 런타임을 만들고, 실패 문구를 만든다 | 조립 |
 | `src/persona/create.ts` | `/persona-create` 흐름, `researchPersona`, 생성 호출(queryFn 주입) | 조립 |
 
 기존 파일 변경:
@@ -215,7 +217,7 @@
 - `src/main.ts`: `--persona <이름>` 옵션. 인격·기분을 불러와 `PersonaRuntime`을 만들고 `baseOptions`에 `hooks`와 `systemPrompt: { type: "preset", preset: "claude_code", append }`를 더한다. UI에 런타임을 넘긴다.
 - `src/config.ts`: `buildBaseOptions`가 선택적 `persona`(hooks, append)를 받는다.
 - `src/commands.ts`: `/persona-create <이름>`, `HELP_TEXT` 갱신.
-- `src/markdown.ts`: 행동 줄 스타일(흐린 기울임체, 인격 색). 코드 블록 안은 제외.
+- `src/markdown.ts`: 행동 줄 스타일(흐린 기울임체, 자홍색). 코드 블록 안은 제외.
 - `src/ui/runOptions.ts`: 선택적 `persona` 구독자.
 - `src/ui/ink/PersonaPanel.tsx`(새 파일): 입력창 위 2줄. 1줄째 `라피 😶 S ▓▓▓▓▓▓▓░░ +62  D ▓▓░░░░░░░ −10`, 2줄째 최근 행동 줄. 얼굴은 방향·세기로 정한다.
 - `src/ui/ink/App.tsx`: 런타임이 있으면 패널을 그리고, 응답 스트림에서 최근 행동 줄을 패널에 넘긴다.
