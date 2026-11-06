@@ -19,7 +19,26 @@ export class OneShotQueryError extends Error {
   }
 }
 
-/** 결과 메시지의 structured_output과 비용을 돌려준다. 실패 결과면 OneShotQueryError를 던진다. */
+const JSON_FENCE_PATTERN = /```(?:json)?\s*\n([\s\S]*?)\n```/;
+
+/** 결과 글에서 JSON을 읽는다. 코드 펜스가 있으면 그 안을, 없으면 첫 { 부터 마지막 } 까지. */
+function parseJsonFromText(text: string | undefined): unknown {
+  if (text === undefined) {
+    return undefined;
+  }
+  const fenced = JSON_FENCE_PATTERN.exec(text)?.[1];
+  const candidate = fenced ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  try {
+    return candidate === "" ? undefined : (JSON.parse(candidate) as unknown);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 결과 메시지의 structured_output과 비용을 돌려준다. 실패 결과면 OneShotQueryError를 던진다.
+ * structured_output이 비어 있으면 결과 글의 JSON을 쓴다(도구를 막은 호출에서 구조화 출력이 빠지는 경우 대비).
+ */
 export async function runStructuredQuery(
   queryFn: OneShotQueryFn,
   prompt: string,
@@ -34,7 +53,8 @@ export async function runStructuredQuery(
     if (message.subtype !== "success") {
       throw new OneShotQueryError(message.subtype, message.total_cost_usd ?? 0);
     }
-    return { output: message.structured_output, costUsd: message.total_cost_usd ?? 0 };
+    const output = message.structured_output ?? parseJsonFromText(message.result);
+    return { output, costUsd: message.total_cost_usd ?? 0 };
   }
   throw new OneShotQueryError("no_result", 0);
 }

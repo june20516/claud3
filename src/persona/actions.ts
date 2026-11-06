@@ -8,6 +8,7 @@ import { ACTION_LINE_PATTERN, JUDGE_TIMEOUT_MS, REACTION_LIMIT } from "./tuning.
 
 const CODE_FENCE = "```";
 const JUDGE_MODEL = "claude-haiku-5-5";
+const ONE_SHOT_MAX_TURNS = 3;
 
 /** 코드 블록 밖에서 줄 전체가 괄호인 줄의 안쪽 문장. */
 export function extractActionLines(text: string): string[] {
@@ -127,6 +128,7 @@ function buildJudgePrompt(profile: PersonaProfile, state: MoodState, action: str
     `사용자가 이 캐릭터에게 한 행동: "${action}"`,
     `이 캐릭터라면 이 행동에 어떻게 반응할지 stress·dopamine 변화(−${REACTION_LIMIT}~${REACTION_LIMIT} 정수)와 한 문장 note로 답하세요.`,
     "싫어하는 행동이면 stress를 올려도 됩니다.",
+    '답은 {"stress": 정수, "dopamine": 정수, "note": "문장"} JSON 하나로만 합니다.',
   ].join("\n");
 }
 
@@ -158,7 +160,8 @@ export function createReactionJudge(
       model: JUDGE_MODEL,
       tools: [],
       settingSources: [],
-      maxTurns: 1,
+      // 구조화 출력은 내부 도구 호출로 끝나므로 1턴으로는 모자랄 수 있다.
+      maxTurns: ONE_SHOT_MAX_TURNS,
       env,
       abortController,
       outputFormat: { type: "json_schema", schema: REACTION_SCHEMA },

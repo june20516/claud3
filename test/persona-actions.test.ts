@@ -107,6 +107,18 @@ describe("runStructuredQuery", () => {
     expect(error).toMatchObject({ subtype: "error_max_budget_usd", costUsd: 0.5 });
   });
 
+  it("structured_output이 없으면 결과 글의 JSON을 읽는다", async () => {
+    const { queryFn } = fakeQuery([
+      message({ type: "result", subtype: "success", result: "답:\n```json\n{\"a\": 2}\n```", total_cost_usd: 0 }),
+    ]);
+    expect((await runStructuredQuery(queryFn, "p", {})).output).toEqual({ a: 2 });
+  });
+
+  it("structured_output도 JSON 글도 없으면 output은 undefined", async () => {
+    const { queryFn } = fakeQuery([message({ type: "result", subtype: "success", result: "모르겠어요", total_cost_usd: 0 })]);
+    expect((await runStructuredQuery(queryFn, "p", {})).output).toBeUndefined();
+  });
+
   it("결과 메시지 없이 끝나면 던진다", async () => {
     const { queryFn } = fakeQuery([]);
     await expect(runStructuredQuery(queryFn, "p", {})).rejects.toThrow();
@@ -121,7 +133,7 @@ describe("runStructuredQuery", () => {
 });
 
 describe("createReactionJudge", () => {
-  it("Haiku·도구 없음·설정 격리·1턴·JSON schema로 묻고, 결과를 ±40 정수로 자른다", async () => {
+  it("Haiku·도구 없음·설정 격리·최대 3턴·JSON schema로 묻고, 결과를 ±40 정수로 자른다", async () => {
     const { queryFn, calls } = fakeQuery([successResult({ stress: 70, dopamine: -12.6, note: "시원함" }, 0.001)]);
     const costs: number[] = [];
     const judge = createReactionJudge(queryFn, { ANTHROPIC_API_KEY: "k" }, (usd) => costs.push(usd));
@@ -134,7 +146,7 @@ describe("createReactionJudge", () => {
       model: "claude-haiku-5-5",
       tools: [],
       settingSources: [],
-      maxTurns: 1,
+      maxTurns: 3,
       env: { ANTHROPIC_API_KEY: "k" },
       outputFormat: { type: "json_schema" },
     });
