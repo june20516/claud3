@@ -320,6 +320,8 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
     workspace,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const lastIdleInterruptAt = useRef(0);
+  /** 실행 중인 명령(예: /persona-create)의 중단. 턴이 없을 때 Esc로 abort한다. */
+  const commandAbort = useRef<AbortController | undefined>(undefined);
   // Static은 레이아웃 밖(absolute)이므로 입력창의 top이 곧 동적 출력 맨 위에서 센 행이다.
   const inputBoxRef = useRef<DOMElement>(null);
   const inputBoxTop = useBoxTop(inputBoxRef);
@@ -363,9 +365,21 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
       session.send(text);
       return;
     }
-    runCommand(parsed, { ...commandContext, print, pickSession: store.pickSession }).catch((error: unknown) =>
-      store.addNotice("error", `오류: ${errorText(error)}`),
-    );
+    const abort = new AbortController();
+    commandAbort.current = abort;
+    runCommand(parsed, {
+      ...commandContext,
+      print,
+      pickSession: store.pickSession,
+      askQuestions: store.asker,
+      commandSignal: abort.signal,
+    })
+      .catch((error: unknown) => store.addNotice("error", `오류: ${errorText(error)}`))
+      .finally(() => {
+        if (commandAbort.current === abort) {
+          commandAbort.current = undefined;
+        }
+      });
   };
 
   const submit = (text: string): void => {
@@ -416,6 +430,10 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
     }
     if (key.escape && session.isBusy) {
       interruptTurn();
+    } else if (key.escape && commandAbort.current !== undefined) {
+      commandAbort.current.abort();
+      commandAbort.current = undefined;
+      store.addNotice("dim", "(중단됨)");
     } else if (key.tab && key.shift) {
       session
         .setPermissionMode(nextPermissionMode(session.currentPermissionMode))

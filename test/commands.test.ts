@@ -1,6 +1,7 @@
 import type { ModelInfo, PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { HELP_TEXT, parseInput, runCommand } from "../src/commands.js";
+import type { PersonaCreateIo } from "../src/persona/create.js";
 import type { CommandContext, ParsedInput } from "../src/commands.js";
 import type { SessionListItem } from "../src/sessionList.js";
 
@@ -332,5 +333,50 @@ describe("runCommand", () => {
     expect(HELP_TEXT).toContain("/resume <ID>");
     expect(HELP_TEXT).toContain("Esc");
     expect(HELP_TEXT).toContain("줄 끝에 \\ 를 붙이고");
+  });
+});
+
+describe("/persona-create", () => {
+  function personaContext(overrides: Partial<CommandContext> = {}, busy = false) {
+    const created = createContext({ isBusy: busy });
+    const createPersona = vi.fn(async (_name: string, _io: PersonaCreateIo) => {});
+    const askQuestions = vi.fn(async () => undefined);
+    const context: CommandContext = { ...created.context, createPersona, askQuestions, ...overrides };
+    return { ...created, context, createPersona, askQuestions };
+  }
+
+  it("명령으로 판정한다", () => {
+    expect(parseInput("/persona-create rapi")).toEqual({ kind: "command", name: "persona-create", argument: "rapi" });
+  });
+
+  it("이름이 없으면 사용법", async () => {
+    const { context, printed, createPersona } = personaContext();
+    await runCommand({ kind: "command", name: "persona-create", argument: "" }, context);
+    expect(printed).toEqual(["사용법: /persona-create <이름>"]);
+    expect(createPersona).not.toHaveBeenCalled();
+  });
+
+  it("턴이 실행 중이면 시작하지 않는다", async () => {
+    const { context, printed, createPersona } = personaContext({}, true);
+    await runCommand({ kind: "command", name: "persona-create", argument: "rapi" }, context);
+    expect(printed).toEqual(["턴이 끝난 뒤 다시 입력해 주세요"]);
+    expect(createPersona).not.toHaveBeenCalled();
+  });
+
+  it("화면이 질문을 지원하지 않으면 안내한다", async () => {
+    const { context, printed } = personaContext({ askQuestions: undefined });
+    await runCommand({ kind: "command", name: "persona-create", argument: "rapi" }, context);
+    expect(printed).toEqual(["이 화면에서는 인격 만들기를 쓸 수 없습니다"]);
+  });
+
+  it("이름과 질문·출력·중단 신호를 넘겨 인격 만들기를 실행한다", async () => {
+    const controller = new AbortController();
+    const { context, createPersona, askQuestions } = personaContext({ commandSignal: controller.signal });
+    await runCommand({ kind: "command", name: "persona-create", argument: "rapi" }, context);
+    expect(createPersona).toHaveBeenCalledTimes(1);
+    const [name, io] = createPersona.mock.calls[0]!;
+    expect(name).toBe("rapi");
+    expect(io.ask).toBe(askQuestions);
+    expect(io.signal).toBe(controller.signal);
   });
 });

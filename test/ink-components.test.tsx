@@ -120,6 +120,7 @@ function renderApp(
     listSessions?: UiRunOptions["commandContext"]["listSessions"];
     startupCommand?: string;
     readWorkspace?: UiRunOptions["readWorkspace"];
+    createPersona?: UiRunOptions["commandContext"]["createPersona"];
   } = {},
 ) {
   const session = new FakeSession();
@@ -130,6 +131,7 @@ function renderApp(
       session: session.asSession(),
       readUsage: overrides.readUsage ?? (async () => SNAPSHOT),
       ...(overrides.listSessions === undefined ? {} : { listSessions: overrides.listSessions }),
+      ...(overrides.createPersona === undefined ? {} : { createPersona: overrides.createPersona }),
     },
     recordUsage,
     ...(overrides.readWorkspace === undefined ? {} : { readWorkspace: overrides.readWorkspace }),
@@ -1359,5 +1361,21 @@ describe("createInkUi", () => {
     await vi.waitFor(() => expect(written).toContain(CURSOR_AFTER_INPUT));
     await session.close();
     await running;
+  });
+});
+
+describe("명령 중단", () => {
+  it("턴이 없을 때 명령 실행 중 Esc를 누르면 명령의 중단 신호가 abort된다", async () => {
+    let signal: AbortSignal | undefined;
+    const createPersona = vi.fn(async (_name: string, io: { signal: AbortSignal }) => {
+      signal = io.signal;
+      await new Promise<void>((resolve) => io.signal.addEventListener("abort", () => resolve(), { once: true }));
+    });
+    const { stdin } = renderApp({ createPersona });
+    await press(stdin, "/persona-create rapi");
+    await press(stdin, "\r");
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    await press(stdin, ESCAPE);
+    await vi.waitFor(() => expect(signal?.aborted).toBe(true));
   });
 });

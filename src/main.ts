@@ -8,6 +8,7 @@ import { MissingApiKeyError, readApiKey } from "./auth.js";
 import { buildBaseOptions } from "./config.js";
 import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionModes.js";
 import { openPersona } from "./persona/bootstrap.js";
+import { createPersona } from "./persona/create.js";
 import type { PersonaRuntime } from "./persona/runtime.js";
 import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
@@ -189,6 +190,8 @@ async function main(): Promise<number> {
       session,
       readUsage: () => readUsage(),
       listSessions: () => loadSessionList({ cwd: process.cwd() }),
+      createPersona: (name, io) =>
+        createPersona(name, io, { queryFn: query, env, onCost: (usd) => void addUsage(usd), clock: () => new Date() }),
     },
     ...(args.pickResume === true ? { startupCommand: "/resume" } : {}),
     readWorkspace: () => readWorkspaceInfo({ cwd: process.cwd() }),

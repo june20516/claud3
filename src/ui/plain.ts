@@ -435,7 +435,7 @@ export function createPlainUi({ input, output, terminal = isTty(input), historyF
           promptIfIdle();
           return;
         }
-        runCommand(parsed, { ...commandContext, print, pickSession })
+        runCommand(parsed, { ...commandContext, print, pickSession, askQuestions: asker })
           .catch((error: unknown) => write(errorLine(errorText(error))))
           .finally(promptIfIdle);
       };

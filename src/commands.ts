@@ -4,12 +4,14 @@ import {
   parsePermissionMode,
   unknownPermissionModeMessage,
 } from "./permissionModes.js";
+import type { PersonaCreateIo } from "./persona/create.js";
 import type { Session } from "./session.js";
 import type { SessionListItem } from "./sessionList.js";
 import { remainingCreditUsd } from "./usageStore.js";
+import type { UserQuestionPrompter } from "./types.js";
 import type { UsageSnapshot } from "./usageStore.js";
 
-const COMMAND_NAMES = ["cost", "clear", "model", "mode", "resume", "help"] as const;
+const COMMAND_NAMES = ["cost", "clear", "model", "mode", "resume", "help", "persona-create"] as const;
 type CommandName = (typeof COMMAND_NAMES)[number];
 
 export type ParsedInput =
@@ -27,6 +29,12 @@ export interface CommandContext {
   listSessions?: () => Promise<SessionListItem[]>;
   /** 목록에서 세션을 고르게 한다. 화면이 제공하고, 취소하면 undefined. */
   pickSession?: (items: SessionListItem[]) => Promise<string | undefined>;
+  /** 명령에서 질문을 띄운다(/persona-create). 화면이 제공한다. */
+  askQuestions?: UserQuestionPrompter;
+  /** 인격 만들기. main이 SDK·비용 기록을 묶어 제공한다. */
+  createPersona?: (name: string, io: PersonaCreateIo) => Promise<void>;
+  /** 이 명령의 중단 신호. 화면이 명령마다 만들고 Esc로 abort한다. */
+  commandSignal?: AbortSignal;
 }
 
 const BUSY_MESSAGE = "턴이 끝난 뒤 다시 입력해 주세요";
@@ -45,6 +53,7 @@ export const HELP_TEXT = [
   "  /help            이 도움말",
   "  /mode            현재 권한 모드와 선택지",
   "  /mode <이름>     권한 모드 바꾸기 (default, acceptEdits, plan, auto)",
+  "  /persona-create <이름>  인격 만들기 (캐릭터 이름·링크로 조사 가능, 조사 중 Esc로 취소)",
   "  그 밖의 /…       플러그인 스킬 등으로 Claude에게 그대로 전달 (예: /suberpower:brainstorming)",
   "키",
   "  Enter            보내기 · 줄 끝에 \\ 를 붙이고 Enter: 여러 줄 입력",
@@ -157,6 +166,23 @@ async function resumeSession(context: CommandContext, sessionId: string): Promis
   );
 }
 
+async function runPersonaCreate(context: CommandContext, name: string): Promise<void> {
+  const { session, print, askQuestions, createPersona, commandSignal } = context;
+  if (name === "") {
+    print("사용법: /persona-create <이름>");
+    return;
+  }
+  if (session.isBusy) {
+    print(BUSY_MESSAGE);
+    return;
+  }
+  if (askQuestions === undefined || createPersona === undefined) {
+    print("이 화면에서는 인격 만들기를 쓸 수 없습니다");
+    return;
+  }
+  await createPersona(name, { ask: askQuestions, print, signal: commandSignal ?? new AbortController().signal });
+}
+
 /** 인자 없는 /resume. 지금 세션을 뺀 목록에서 골라 이동한다. 화면이 고르기를 지원하지 않으면 사용법을 보인다. */
 async function pickAndResume(context: CommandContext): Promise<void> {
   const { session, print, listSessions, pickSession } = context;
@@ -247,6 +273,9 @@ export async function runCommand(
         return;
       }
       await resumeSession(context, argument);
+      return;
+    case "persona-create":
+      await runPersonaCreate(context, argument);
       return;
   }
 }
