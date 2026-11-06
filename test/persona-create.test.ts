@@ -88,6 +88,7 @@ function scriptedAsk(script: Record<string, string | null | ((question: UserQues
 }
 
 const SURVEY_ANSWERS = {
+  "표시 이름": "라피",
   관계: "후배",
   말투: "존댓말",
   성격: "냉정한 척하는 후배",
@@ -116,7 +117,7 @@ describe("answersToDraft", () => {
   }
 
   it("목록은 / 로 나누고, 없음은 빈 목록, 민감도는 숫자, 업무 시간은 범위로 읽는다", () => {
-    const questions = buildSurveyQuestions({});
+    const questions = buildSurveyQuestions({}, "rapi");
     const draft = answersToDraft(
       answer(questions, { ...SURVEY_ANSWERS, "말투 예시": "하나 / 둘", 스트레스: "5 (예민)", "업무 시간": "10:30~19" }),
       questions,
@@ -136,7 +137,7 @@ describe("answersToDraft", () => {
 
   it("조사 선택지를 고르면 조사 초안의 값을 그대로 쓴다", () => {
     const research: PersonaDraft = { speechExamples: ["믿어라!", "포기 안 해!"], speechLevel: "casual" };
-    const questions = buildSurveyQuestions(research);
+    const questions = buildSurveyQuestions(research, "rapi");
     const examples = questions.find((question) => question.header === "말투 예시");
     expect(examples?.options[0]?.label.startsWith("(조사)")).toBe(true);
     const draft = answersToDraft(
@@ -149,7 +150,7 @@ describe("answersToDraft", () => {
   });
 
   it("업무 시간 없음은 null", () => {
-    const questions = buildSurveyQuestions({});
+    const questions = buildSurveyQuestions({}, "rapi");
     expect(answersToDraft(answer(questions, { ...SURVEY_ANSWERS, "업무 시간": "없음" }), questions, {}).workHours).toBeNull();
   });
 });
@@ -203,7 +204,9 @@ describe("createPersona", () => {
     expect(queries.research).toHaveLength(0);
     expect(queries.generation).toHaveLength(1);
     expect(queries.generation[0]?.options).toMatchObject({ tools: [], settingSources: [], persistSession: false });
-    expect(validateProfile(await savedProfile("rapi")).ok).toBe(true);
+    const saved = await savedProfile("rapi");
+    expect(validateProfile(saved).ok).toBe(true);
+    expect((saved as PersonaProfile).displayName).toBe("라피");
     expect(printed).toContain(`인격 'rapi'을(를) 저장했습니다: ${join(dir, "rapi.json")}`);
     expect(costs).toEqual([0.02]);
   });
@@ -259,6 +262,26 @@ describe("createPersona", () => {
     const firstLabel = (header: string) => asked.find((question) => question.header === header)?.options[0]?.label;
     expect(firstLabel("성격")).toBe("(조사) 열혈 닌자");
     expect(firstLabel("스트레스")?.startsWith("(조사)")).toBe(false);
+  });
+
+  it("표시 이름의 기본 선택지는 인격 이름이고, 조사한 이름이 있으면 맨 앞에 둔다", () => {
+    const plain = buildSurveyQuestions({}, "rapi").find((question) => question.header === "표시 이름");
+    expect(plain?.options.map((item) => item.label)).toEqual(["rapi"]);
+    const researched = buildSurveyQuestions({ displayName: "우즈마키 나루토" }, "naruto").find(
+      (question) => question.header === "표시 이름",
+    );
+    expect(researched?.options[0]?.label).toBe("(조사) 우즈마키 나루토");
+  });
+
+  it("업무 시간을 읽지 못하면 그 문항만 다시 묻고 나머지 답은 유지한다", async () => {
+    const { ask, asked } = scriptedAsk({ "참고 자료": "없음", ...SURVEY_ANSWERS, "업무 시간": ["10~24", "11:00~20:00"] });
+    await createPersona("rapi", io(ask), deps(fakeQueries([]).queryFn));
+    expect(asked.filter((question) => question.header === "업무 시간")).toHaveLength(2);
+    expect(asked.filter((question) => question.header === "관계")).toHaveLength(1);
+    expect(printed).toContain("업무 시간을 읽지 못했습니다: 10~24 (예: 10:00~19:00, 없음)");
+    const saved = (await savedProfile("rapi")) as PersonaProfile;
+    expect(saved.workHours).toEqual({ days: [1, 2, 3, 4, 5], start: "11:00", end: "20:00" });
+    expect(saved.relationship).toBe("후배");
   });
 
   it("설문에서 취소하면 파일을 만들지 않는다", async () => {

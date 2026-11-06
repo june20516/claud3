@@ -43,6 +43,7 @@ const HEADERS = {
   researchFailed: "조사 실패",
   generationFailed: "생성 실패",
   confirm: "확인",
+  displayName: "표시 이름",
   relationship: "관계",
   speechLevel: "말투",
   summary: "성격",
@@ -324,10 +325,11 @@ const SENSITIVITY_OPTIONS = [
   option("5 (예민)"),
 ];
 
-/** spec 7장의 9문항. 조사 초안이 있으면 해당 값을 첫 선택지로 미리 채운다. */
-export function buildSurveyQuestions(draft: PersonaDraft): UserQuestion[] {
+/** 표시 이름과 spec 7장의 9문항. 조사 초안이 있으면 해당 값을 첫 선택지로 미리 채운다. */
+export function buildSurveyQuestions(draft: PersonaDraft, name: string): UserQuestion[] {
   const speechLevel = draft.speechLevel === undefined ? undefined : draft.speechLevel === "polite" ? "존댓말" : "반말";
   return [
+    question(HEADERS.displayName, "패널과 대화에서 쓸 캐릭터 이름은 무엇인가요?", withResearch(draft.displayName, [option(name)])),
     question(
       HEADERS.relationship,
       "사용자와 어떤 관계인가요?",
@@ -383,16 +385,27 @@ function pad(value: string | undefined): string {
   return (value ?? "00").padStart(2, "0");
 }
 
-/** "09~18시 월~금", "없음", "10:30~19" 같은 답을 읽는다. 읽지 못하면 null(업무 시간 없음). */
-function parseWorkHours(answer: string): WorkHours | null {
+const HOUR_MAX = 23;
+const MINUTE_MAX = 59;
+
+/**
+ * "09~18시 월~금", "없음", "10:30~19" 같은 답을 읽는다. 요일은 월~금으로 둔다.
+ * "없음"은 null(업무 시간 없음), 읽을 수 없거나 범위를 벗어나면 undefined(다시 물어야 함).
+ */
+export function parseWorkHoursAnswer(answer: string): WorkHours | null | undefined {
   if (answer.trim() === NONE) {
     return null;
   }
   const match = /(\d{1,2})(?::(\d{2}))?\s*[~-]\s*(\d{1,2})(?::(\d{2}))?/.exec(answer);
   if (match === null) {
-    return null;
+    return undefined;
   }
   const [, startHour, startMinute, endHour, endMinute] = match;
+  const hours = [Number(startHour), Number(endHour)];
+  const minutes = [Number(startMinute ?? 0), Number(endMinute ?? 0)];
+  if (hours.some((hour) => hour > HOUR_MAX) || minutes.some((minute) => minute > MINUTE_MAX)) {
+    return undefined;
+  }
   return { days: WEEKDAYS, start: `${pad(startHour)}:${pad(startMinute)}`, end: `${pad(endHour)}:${pad(endMinute)}` };
 }
 
@@ -406,6 +419,9 @@ export function answersToDraft(answers: UserQuestionAnswers, questions: UserQues
     }
     const pickedResearch = answer.startsWith(RESEARCH_PREFIX) && item.options[0]?.label === answer;
     switch (item.header) {
+      case HEADERS.displayName:
+        result.displayName = pickedResearch ? (draft.displayName ?? answer) : answer.trim();
+        break;
       case HEADERS.relationship:
         result.relationship = pickedResearch ? (draft.relationship ?? answer) : answer.trim();
         break;
@@ -431,7 +447,8 @@ export function answersToDraft(answers: UserQuestionAnswers, questions: UserQues
         result.sensitivity = { stress: result.sensitivity?.stress ?? 3, dopamine: parseLevel(answer) };
         break;
       case HEADERS.workHours:
-        result.workHours = pickedResearch && draft.workHours !== undefined ? draft.workHours : parseWorkHours(answer);
+        result.workHours =
+          pickedResearch && draft.workHours !== undefined ? draft.workHours : (parseWorkHoursAnswer(answer) ?? null);
         break;
     }
   }
@@ -452,6 +469,32 @@ function errorReason(error: unknown): string {
     return error.subtype;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 업무 시간 답을 읽을 수 없으면 그 문항만 다시 묻는다(나머지 답은 유지). 취소하면 false. */
+async function ensureWorkHoursAnswer(
+  answers: UserQuestionAnswers,
+  questions: UserQuestion[],
+  io: PersonaCreateIo,
+): Promise<boolean> {
+  const workHoursQuestion = questions.find((item) => item.header === HEADERS.workHours);
+  if (workHoursQuestion === undefined) {
+    return true;
+  }
+  for (;;) {
+    const answer = answers[workHoursQuestion.question] ?? NONE;
+    const pickedResearch = workHoursQuestion.options[0]?.label === answer && answer.startsWith(RESEARCH_PREFIX);
+    if (pickedResearch || parseWorkHoursAnswer(answer) !== undefined) {
+      return true;
+    }
+    io.print(`업무 시간을 읽지 못했습니다: ${answer} (예: 10:00~19:00, 없음)`);
+    const retried = await io.ask({ questions: [workHoursQuestion] });
+    const next = retried?.[workHoursQuestion.question];
+    if (next === undefined) {
+      return false;
+    }
+    answers[workHoursQuestion.question] = next;
+  }
 }
 
 /** 조사 단계. 조사 없이 계속하면 빈 초안, 취소하면 undefined. */
@@ -583,9 +626,9 @@ export async function createPersona(name: string, io: PersonaCreateIo, deps: Per
     draft = researched;
   }
 
-  const questions = buildSurveyQuestions(draft);
+  const questions = buildSurveyQuestions(draft, name);
   const answers = await io.ask({ questions });
-  if (answers === undefined) {
+  if (answers === undefined || !(await ensureWorkHoursAnswer(answers, questions, io))) {
     cancel();
     return;
   }
