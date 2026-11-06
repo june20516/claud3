@@ -61,3 +61,6 @@ export const PRAISE_KEYWORDS = ["잘했", "고마워", "고맙", "최고", "훌�
 export const INSULT_KEYWORDS = ["멍청", "바보", "한심", "쓰레기", "꺼져", "닥쳐", "병신", "짜증나게"] as const;
 
 export const TEST_COMMAND_PATTERN = /\b(npm (run )?test|vitest|jest|pytest|go test|cargo test)\b/;
+
+/** 줄 전체가 괄호인 행동 묘사 줄. 안쪽 문장이 1번 그룹이다. */
+export const ACTION_LINE_PATTERN = /^\s*\((.+)\)\s*$/;
