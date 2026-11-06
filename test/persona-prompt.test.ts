@@ -71,6 +71,11 @@ describe("buildTurnContext", () => {
     expect(text.split("\n")[0]).toBe("[라피 상태] 방향: 평온. stress +12, dopamine 0.");
   });
 
+  it("같은 원인은 횟수로 합친다", () => {
+    const reasons = ["퇴근 시간 이후", "도구 실패", "도구 실패", "도구 실패"].map(reason);
+    expect(buildTurnContext(PROFILE, report({}, { reasons }))).toContain("최근 원인: 퇴근 시간 이후, 도구 실패 3회.");
+  });
+
   it("최근 원인은 마지막 3개만", () => {
     const reasons = ["a", "b", "c", "d"].map(reason);
     expect(buildTurnContext(PROFILE, report({}, { reasons }))).toContain("최근 원인: b, c, d.");

@@ -26,6 +26,13 @@ describe("openPersona", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("이름 형식이 틀리면 파일을 찾지 않고 거부한다", async () => {
+    expect(await openPersona("../foo", deps(dir))).toEqual({
+      ok: false,
+      message: "인격 이름은 소문자·숫자·_·- 1~32자여야 합니다: ../foo",
+    });
+  });
+
   it("인격이 하나도 없으면 만드는 방법을 안내한다", async () => {
     expect(await openPersona("rapi", deps(dir))).toEqual({
       ok: false,

@@ -106,10 +106,21 @@ function clock(now: Date): string {
   return `시각: ${hours}:${minutes}, ${WEEKDAY_NAMES[now.getDay()]}.`;
 }
 
+/** 같은 원인을 마지막으로 나온 순서대로 모아 "도구 실패 3회"처럼 횟수를 붙인다. */
+function groupReasons(reasons: MoodReason[]): string[] {
+  const counts = new Map<string, number>();
+  for (const reason of reasons) {
+    const count = counts.get(reason.text) ?? 0;
+    counts.delete(reason.text);
+    counts.set(reason.text, count + 1);
+  }
+  return [...counts].map(([text, count]) => (count > 1 ? `${text} ${count}회` : text));
+}
+
 /** 턴마다 additionalContext로 넣는 현재 상태. 지시가 아니라 사실만 서술한다. */
 export function buildTurnContext(profile: PersonaProfile, report: TurnReport): string {
   const lines = [headline(profile, report)];
-  const reasons = report.reasons.slice(-MAX_REASONS).map((reason) => reason.text);
+  const reasons = groupReasons(report.reasons).slice(-MAX_REASONS);
   if (reasons.length > 0) {
     lines.push(`최근 원인: ${reasons.join(", ")}.`);
   }

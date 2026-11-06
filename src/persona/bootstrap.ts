@@ -1,5 +1,6 @@
 import { createReactionJudge } from "./actions.js";
 import type { OneShotQueryFn } from "./oneShot.js";
+import { isValidPersonaName } from "./profile.js";
 import { createPersonaRuntime } from "./runtime.js";
 import type { PersonaRuntime } from "./runtime.js";
 import { createSystemSignalSources } from "./signals.js";
@@ -25,6 +26,9 @@ async function missingMessage(name: string, dir: string): Promise<string> {
 
 /** --persona 이름으로 인격과 기분을 읽어 런타임을 만든다. 실패하면 사용자에게 보일 문구를 돌려준다. */
 export async function openPersona(name: string, deps: OpenPersonaDeps): Promise<OpenPersonaResult> {
+  if (!isValidPersonaName(name)) {
+    return { ok: false, message: `인격 이름은 소문자·숫자·_·- 1~32자여야 합니다: ${name}` };
+  }
   const dir = deps.dir ?? personasDir();
   const clock = deps.clock ?? (() => new Date());
   const loaded = await loadProfile(name, dir);

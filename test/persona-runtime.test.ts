@@ -155,4 +155,21 @@ describe("createPersonaRuntime", () => {
     await call(prompt("안녕"));
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it("도구 이벤트도 흐른 시간만큼 먼저 감쇠한다", async () => {
+    const { runtime, call, advance } = setup({ initialState: { ...initialMood(START), stress: 80 } });
+    advance(30 * 60_000);
+    await call(toolSuccess());
+    expect(runtime.snapshot().state.stress).toBeCloseTo(39);
+  });
+
+  it("도구 성공은 최근 원인에 넣지 않는다", async () => {
+    const { call } = setup();
+    await call(prompt("시작"));
+    await call(toolFailure());
+    await call(toolSuccess());
+    await call(toolSuccess());
+    const output = await call(prompt("다음"));
+    expect(contextOf(output)).toContain("최근 원인: 도구 실패.");
+  });
 });

@@ -73,7 +73,8 @@ export function createPersonaRuntime(deps: PersonaRuntimeDeps): PersonaRuntime {
   function apply(events: MoodEvent[], now: Date): void {
     for (const event of events) {
       const next = applyEvent(state, event, profile, now);
-      if (next.recentReasons !== state.recentReasons) {
+      // 도구 성공은 너무 잦아 실제 원인을 밀어내므로 상태 블록의 원인에는 넣지 않는다.
+      if (next.recentReasons !== state.recentReasons && event.kind !== "toolSuccess") {
         const added = next.recentReasons.at(-1);
         if (added !== undefined) {
           pendingReasons.push(added);
@@ -129,7 +130,10 @@ export function createPersonaRuntime(deps: PersonaRuntimeDeps): PersonaRuntime {
   }
 
   async function onEvents(events: MoodEvent[]): Promise<HookJSONOutput> {
-    apply(events, deps.clock());
+    const now = deps.clock();
+    // 긴 턴 동안 흐른 시간도 감쇠에 넣는다.
+    state = decay(state, now);
+    apply(events, now);
     await commit();
     return {};
   }

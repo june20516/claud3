@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addUsage, readUsage, remainingCreditUsd } from "../src/usageStore.js";
+import { addUsage, readUsage, recordUsageInBackground, remainingCreditUsd } from "../src/usageStore.js";
 
 const DEFAULT_SNAPSHOT = { startingCreditUsd: 100, spentUsd: 0 };
 
@@ -59,5 +59,19 @@ describe("usageStore", () => {
   it("남은 크레딧은 0 아래로 내려가지 않는다", () => {
     expect(remainingCreditUsd({ startingCreditUsd: 100, spentUsd: 120 })).toBe(0);
     expect(remainingCreditUsd({ startingCreditUsd: 100, spentUsd: 30 })).toBe(70);
+  });
+
+  it("동시에 기록해도 모두 누적된다", async () => {
+    await Promise.all([addUsage(0.1, dir), addUsage(0.2, dir), addUsage(0.3, dir)]);
+    expect((await readUsage(dir)).spentUsd).toBeCloseTo(0.6);
+  });
+
+  it("백그라운드 기록이 실패하면 오류를 알리고 거부된 promise를 남기지 않는다", async () => {
+    const blocked = join(dir, "file");
+    await writeFile(blocked, "x", "utf8");
+    const errors: string[] = [];
+    await recordUsageInBackground(0.1, (message) => errors.push(message), join(blocked, "sub"));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^사용량을 기록하지 못했습니다: /);
   });
 });

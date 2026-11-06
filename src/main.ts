@@ -18,7 +18,7 @@ import { loadSessionList } from "./sessionList.js";
 import { createInkUi } from "./ui/ink/index.js";
 import { createPlainUi } from "./ui/plain.js";
 import type { ChatUi } from "./ui/runOptions.js";
-import { addUsage, configDir, readUsage } from "./usageStore.js";
+import { addUsage, configDir, readUsage, recordUsageInBackground } from "./usageStore.js";
 import { readUserConfig, resolvePermissionMode } from "./userConfig.js";
 import { readWorkspaceInfo } from "./workspaceInfo.js";
 
@@ -152,7 +152,7 @@ async function main(): Promise<number> {
     const opened = await openPersona(args.persona, {
       queryFn: query,
       env,
-      onCost: (usd) => void addUsage(usd),
+      onCost: (usd) => void recordUsageInBackground(usd, (message) => console.error(message)),
       onWarning: (message) => console.error(message),
     });
     if (!opened.ok) {
@@ -193,7 +193,7 @@ async function main(): Promise<number> {
       readUsage: () => readUsage(),
       listSessions: () => loadSessionList({ cwd: process.cwd() }),
       createPersona: (name, io) =>
-        createPersona(name, io, { queryFn: query, env, onCost: (usd) => void addUsage(usd), clock: () => new Date() }),
+        createPersona(name, io, { queryFn: query, env, onCost: (usd) => void recordUsageInBackground(usd, (message) => console.error(message)), clock: () => new Date() }),
     },
     ...(args.pickResume === true ? { startupCommand: "/resume" } : {}),
     readWorkspace: () => readWorkspaceInfo({ cwd: process.cwd() }),
