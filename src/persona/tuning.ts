@@ -56,6 +56,8 @@ export const CPU_BUSY_RATIO = 0.8;
 /** 반응 하나의 stress·dopamine 절댓값 상한. */
 export const REACTION_LIMIT = 40;
 export const JUDGE_TIMEOUT_MS = 10_000;
+/** 한 입력에서 판단기를 부르는 최대 횟수. 판단을 차례로 기다리므로 hook 시간 제한(30초)을 넘지 않게 한다. */
+export const MAX_JUDGED_ACTIONS = 2;
 
 export const PRAISE_KEYWORDS = ["잘했", "고마워", "고맙", "최고", "훌륭", "대단", "수고했", "좋아요", "멋지"] as const;
 export const INSULT_KEYWORDS = ["멍청", "바보", "한심", "쓰레기", "꺼져", "닥쳐", "병신", "짜증나게"] as const;

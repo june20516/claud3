@@ -241,7 +241,10 @@ export async function researchPersona(
       researchPrompt(input),
       {
         tools: ["WebSearch", "WebFetch"],
+        // 설정 격리(settingSources: [])로 allow 규칙이 없으므로 웹 도구를 직접 허용한다.
+        allowedTools: ["WebSearch", "WebFetch"],
         settingSources: [],
+        persistSession: false,
         ...RESEARCH_LIMITS,
         env: deps.env,
         abortController: linkedAbortController(signal),
@@ -269,6 +272,7 @@ export async function generateDirections(
     const { output, costUsd } = await runStructuredQuery(deps.queryFn, generationPrompt(draft), {
       tools: [],
       settingSources: [],
+      persistSession: false,
       maxTurns: GENERATION_MAX_TURNS,
       env: deps.env,
       abortController: linkedAbortController(signal),

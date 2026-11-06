@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMarkdownRenderer, renderMarkdownLine } from "../src/markdown.js";
+import { createMarkdownRenderer, renderMarkdownLine, setActionLineStyling } from "../src/markdown.js";
 
 const plain = (line: string, inCodeBlock = false): string =>
   stripVTControlCharacters(renderMarkdownLine(line, { inCodeBlock }));
@@ -19,17 +19,29 @@ afterEach(() => {
 });
 
 describe("renderMarkdownLine", () => {
-  it("줄 전체가 괄호인 행동 줄은 흐린 기울임체·자홍색으로 그린다", () => {
-    const rendered = renderMarkdownLine("(한숨을 쉰다)", { inCodeBlock: false });
-    expect(rendered).toContain("\u001b[2m");
-    expect(rendered).toContain("\u001b[3m");
-    expect(rendered).toContain("\u001b[35m");
-    expect(stripVTControlCharacters(rendered)).toBe("(한숨을 쉰다)");
-  });
+  describe("행동 줄", () => {
+    afterEach(() => {
+      setActionLineStyling(false);
+    });
 
-  it("코드 블록 안의 괄호 줄과 문장 속 괄호는 행동 줄이 아니다", () => {
-    expect(renderMarkdownLine("(foo())", { inCodeBlock: true })).not.toContain("\u001b[3m");
-    expect(renderMarkdownLine("문장 (괄호)", { inCodeBlock: false })).not.toContain("\u001b[3m");
+    it("인격이 꺼져 있으면 괄호 줄을 평소처럼 그린다", () => {
+      expect(renderMarkdownLine("(참고: `foo.ts`)", { inCodeBlock: false })).not.toContain("\u001b[3m");
+    });
+
+    it("인격이 켜져 있으면 흐린 기울임체·자홍색으로 그리고 인라인 마크다운도 적용한다", () => {
+      setActionLineStyling(true);
+      const rendered = renderMarkdownLine("(한숨을 쉰다 `x`)", { inCodeBlock: false });
+      expect(rendered).toContain("\u001b[2m");
+      expect(rendered).toContain("\u001b[3m");
+      expect(rendered).toContain("\u001b[35m");
+      expect(stripVTControlCharacters(rendered)).toBe("(한숨을 쉰다 x)");
+    });
+
+    it("인격이 켜져 있어도 코드 블록 안의 괄호 줄과 문장 속 괄호는 행동 줄이 아니다", () => {
+      setActionLineStyling(true);
+      expect(renderMarkdownLine("(foo())", { inCodeBlock: true })).not.toContain("\u001b[3m");
+      expect(renderMarkdownLine("문장 (괄호)", { inCodeBlock: false })).not.toContain("\u001b[3m");
+    });
   });
 
   it("제목에서 # 기호를 빼고 굵게 표시한다", () => {

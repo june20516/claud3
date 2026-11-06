@@ -48,6 +48,14 @@ function renderInline(text: string): string {
     .replace(CODE_PLACEHOLDER_PATTERN, (_match, index: string) => paint("cyan", codeSpans[Number(index)] ?? ""));
 }
 
+/** 프로세스에 인격은 하나뿐이므로 행동 줄 스타일을 켜는 설정도 하나로 둔다. */
+let actionLineStyling = false;
+
+/** --persona로 시작할 때 켠다. 꺼져 있으면 괄호 줄도 평소처럼 그린다. */
+export function setActionLineStyling(enabled: boolean): void {
+  actionLineStyling = enabled;
+}
+
 export function renderMarkdownLine(line: string, state: MarkdownLineState): string {
   if (line.trimStart().startsWith(CODE_FENCE)) {
     state.inCodeBlock = !state.inCodeBlock;
@@ -57,9 +65,9 @@ export function renderMarkdownLine(line: string, state: MarkdownLineState): stri
     return paint("cyan", line);
   }
 
-  // 인격의 행동 묘사 줄 (예: "(한숨을 쉰다)"). 인격이 없을 때도 같은 모양의 줄은 흐리게 보인다.
-  if (ACTION_LINE_PATTERN.test(line)) {
-    return paint(["dim", "italic", "magenta"], line);
+  // 인격의 행동 묘사 줄 (예: "(한숨을 쉰다)"). --persona일 때만 다르게 그린다.
+  if (actionLineStyling && ACTION_LINE_PATTERN.test(line)) {
+    return paint(["dim", "italic", "magenta"], renderInline(line));
   }
 
   const heading = HEADING_PATTERN.exec(line);

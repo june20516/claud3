@@ -7,6 +7,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { MissingApiKeyError, readApiKey } from "./auth.js";
 import { buildBaseOptions } from "./config.js";
 import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionModes.js";
+import { setActionLineStyling } from "./markdown.js";
 import { openPersona } from "./persona/bootstrap.js";
 import { createPersona } from "./persona/create.js";
 import type { PersonaRuntime } from "./persona/runtime.js";
@@ -159,6 +160,7 @@ async function main(): Promise<number> {
       return 1;
     }
     persona = opened.runtime;
+    setActionLineStyling(true);
   }
 
   const baseOptions = buildBaseOptions({

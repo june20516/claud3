@@ -85,6 +85,14 @@ describe("resolveReactions", () => {
     });
   });
 
+  it("한 입력에서 판단기는 최대 2번만 부르고 나머지 모르는 행동은 효과 0", async () => {
+    const judge = vi.fn<ReactionJudge>(async ({ action }) => ({ action, stress: -1, dopamine: 1, note: "" }));
+    const result = await resolveReactions(["가를 한다", "나를 한다", "다를 한다"], PROFILE, STATE, judge);
+    expect(judge).toHaveBeenCalledTimes(2);
+    expect(result.events[2]).toEqual({ kind: "userAction", action: "다를 한다", stress: 0, dopamine: 0 });
+    expect(result.learned).toHaveLength(2);
+  });
+
   it("판단기가 실패해도 효과 0으로 계속한다", async () => {
     const failing: ReactionJudge = async () => {
       throw new Error("boom");
@@ -146,12 +154,21 @@ describe("createReactionJudge", () => {
       model: "claude-haiku-5-5",
       tools: [],
       settingSources: [],
+      persistSession: false,
       maxTurns: 3,
       env: { ANTHROPIC_API_KEY: "k" },
       outputFormat: { type: "json_schema" },
     });
     expect(calls[0]!.prompt).toContain("냉각수를 넣는다");
     expect(calls[0]!.prompt).toContain(PROFILE.summary);
+  });
+
+  it("실패 결과여도 쓴 비용을 기록한다", async () => {
+    const { queryFn } = fakeQuery([message({ type: "result", subtype: "error_max_turns", total_cost_usd: 0.003 })]);
+    const costs: number[] = [];
+    const judge = createReactionJudge(queryFn, {}, (usd) => costs.push(usd));
+    await judge({ profile: PROFILE, state: STATE, action: "x", signal: new AbortController().signal }).catch(() => undefined);
+    expect(costs).toEqual([0.003]);
   });
 
   it("출력 형식이 틀리면 undefined", async () => {

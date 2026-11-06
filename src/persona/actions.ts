@@ -1,10 +1,11 @@
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { LearnedReaction, MoodEvent, MoodState } from "./mood.js";
-import { runStructuredQuery } from "./oneShot.js";
+import { OneShotQueryError, runStructuredQuery } from "./oneShot.js";
 import type { OneShotQueryFn } from "./oneShot.js";
 import { DIRECTIONS } from "./profile.js";
 import type { PersonaProfile } from "./profile.js";
 import { normalizePrompt } from "./turnEvents.js";
-import { ACTION_LINE_PATTERN, JUDGE_TIMEOUT_MS, REACTION_LIMIT } from "./tuning.js";
+import { ACTION_LINE_PATTERN, JUDGE_TIMEOUT_MS, MAX_JUDGED_ACTIONS, REACTION_LIMIT } from "./tuning.js";
 
 const CODE_FENCE = "```";
 const JUDGE_MODEL = "claude-haiku-5-5";
@@ -74,6 +75,7 @@ export async function resolveReactions(
 ): Promise<ResolvedActions> {
   const events: MoodEvent[] = [];
   const learned: LearnedReaction[] = [];
+  let judgedCount = 0;
   for (const action of actions) {
     const known = profile.reactions.find((reaction) => reaction.keywords.some((keyword) => action.includes(keyword)));
     if (known !== undefined) {
@@ -86,6 +88,11 @@ export async function resolveReactions(
       events.push(userAction(action, remembered.stress, remembered.dopamine));
       continue;
     }
+    if (judgedCount >= MAX_JUDGED_ACTIONS) {
+      events.push(userAction(action, 0, 0));
+      continue;
+    }
+    judgedCount++;
     const judged = await judgeWithTimeout(judge, { profile, state, action });
     if (judged === undefined) {
       events.push(userAction(action, 0, 0));
@@ -156,16 +163,29 @@ export function createReactionJudge(
   return async ({ profile, state, action, signal }) => {
     const abortController = new AbortController();
     signal.addEventListener("abort", () => abortController.abort(), { once: true });
-    const { output, costUsd } = await runStructuredQuery(queryFn, buildJudgePrompt(profile, state, action), {
+    const options: Options = {
       model: JUDGE_MODEL,
       tools: [],
       settingSources: [],
+      // one-shot 세션이 /resume 목록에 남지 않게 한다.
+      persistSession: false,
       // 구조화 출력은 내부 도구 호출로 끝나므로 1턴으로는 모자랄 수 있다.
       maxTurns: ONE_SHOT_MAX_TURNS,
       env,
       abortController,
       outputFormat: { type: "json_schema", schema: REACTION_SCHEMA },
-    });
+    };
+    let result: Awaited<ReturnType<typeof runStructuredQuery>>;
+    try {
+      result = await runStructuredQuery(queryFn, buildJudgePrompt(profile, state, action), options);
+    } catch (error) {
+      // 실패해도 쓴 비용은 기록한다. 실패한 판단은 기억하지 않아 다음에 다시 판단하므로 빠뜨리면 계속 샌다.
+      if (error instanceof OneShotQueryError) {
+        onCost(error.costUsd);
+      }
+      throw error;
+    }
+    const { output, costUsd } = result;
     onCost(costUsd);
     const parsed = parseJudgeOutput(output);
     return parsed === undefined ? undefined : { action, ...parsed };
