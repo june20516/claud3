@@ -390,6 +390,11 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
       store.answerQuestion(text.trim());
       return;
     }
+    // /persona-create처럼 질문을 주고받는 명령이 도는 동안 다른 입력이 끼면 Esc가 엉뚱한 것을 멈춘다.
+    if (commandAbort.current !== undefined) {
+      store.addNotice("dim", "명령이 끝난 뒤 다시 입력해 주세요");
+      return;
+    }
     store.addUserInput(text);
     runInput(text);
   };

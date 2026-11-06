@@ -53,7 +53,7 @@ export const HELP_TEXT = [
   "  /help            이 도움말",
   "  /mode            현재 권한 모드와 선택지",
   "  /mode <이름>     권한 모드 바꾸기 (default, acceptEdits, plan, auto)",
-  "  /persona-create <이름>  인격 만들기 (캐릭터 이름·링크로 조사 가능, 조사 중 Esc로 취소)",
+  "  /persona-create <이름>  인격 만들기 (캐릭터 이름·링크로 조사 가능, 조사 중 Esc로 취소(Ink 화면))",
   "  그 밖의 /…       플러그인 스킬 등으로 Claude에게 그대로 전달 (예: /suberpower:brainstorming)",
   "키",
   "  Enter            보내기 · 줄 끝에 \\ 를 붙이고 Enter: 여러 줄 입력",

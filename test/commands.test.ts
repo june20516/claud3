@@ -345,6 +345,10 @@ describe("/persona-create", () => {
     return { ...created, context, createPersona, askQuestions };
   }
 
+  it("도움말은 Esc 취소가 Ink 화면에서만 된다고 안내한다", () => {
+    expect(HELP_TEXT).toContain("조사 중 Esc로 취소(Ink 화면)");
+  });
+
   it("명령으로 판정한다", () => {
     expect(parseInput("/persona-create rapi")).toEqual({ kind: "command", name: "persona-create", argument: "rapi" });
   });

@@ -1378,4 +1378,23 @@ describe("명령 중단", () => {
     await press(stdin, ESCAPE);
     await vi.waitFor(() => expect(signal?.aborted).toBe(true));
   });
+
+  it("명령이 실행 중이면 새 입력과 명령을 받지 않고 안내한다", async () => {
+    let calls = 0;
+    const createPersona = vi.fn(async (_name: string, io: { signal: AbortSignal }) => {
+      calls++;
+      await new Promise<void>((resolve) => io.signal.addEventListener("abort", () => resolve(), { once: true }));
+    });
+    const { stdin, session, frame } = renderApp({ createPersona });
+    await press(stdin, "/persona-create rapi");
+    await press(stdin, "\r");
+    await vi.waitFor(() => expect(calls).toBe(1));
+    await press(stdin, "안녕");
+    await press(stdin, "\r");
+    await press(stdin, "/persona-create naruto");
+    await press(stdin, "\r");
+    await vi.waitFor(() => expect(frame()).toContain("명령이 끝난 뒤 다시 입력해 주세요"));
+    expect(session.sent).toEqual([]);
+    expect(calls).toBe(1);
+  });
 });
