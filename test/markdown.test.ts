@@ -19,6 +19,19 @@ afterEach(() => {
 });
 
 describe("renderMarkdownLine", () => {
+  it("줄 전체가 괄호인 행동 줄은 흐린 기울임체·자홍색으로 그린다", () => {
+    const rendered = renderMarkdownLine("(한숨을 쉰다)", { inCodeBlock: false });
+    expect(rendered).toContain("\u001b[2m");
+    expect(rendered).toContain("\u001b[3m");
+    expect(rendered).toContain("\u001b[35m");
+    expect(stripVTControlCharacters(rendered)).toBe("(한숨을 쉰다)");
+  });
+
+  it("코드 블록 안의 괄호 줄과 문장 속 괄호는 행동 줄이 아니다", () => {
+    expect(renderMarkdownLine("(foo())", { inCodeBlock: true })).not.toContain("\u001b[3m");
+    expect(renderMarkdownLine("문장 (괄호)", { inCodeBlock: false })).not.toContain("\u001b[3m");
+  });
+
   it("제목에서 # 기호를 빼고 굵게 표시한다", () => {
     expect(plain("# 제목")).toBe("제목");
     expect(plain("### 소제목")).toBe("소제목");

@@ -1,4 +1,5 @@
 import { styleText } from "node:util";
+import { ACTION_LINE_PATTERN } from "./persona/tuning.js";
 
 type TextFormat = Parameters<typeof styleText>[0];
 
@@ -54,6 +55,11 @@ export function renderMarkdownLine(line: string, state: MarkdownLineState): stri
   }
   if (state.inCodeBlock) {
     return paint("cyan", line);
+  }
+
+  // 인격의 행동 묘사 줄 (예: "(한숨을 쉰다)"). 인격이 없을 때도 같은 모양의 줄은 흐리게 보인다.
+  if (ACTION_LINE_PATTERN.test(line)) {
+    return paint(["dim", "italic", "magenta"], line);
   }
 
   const heading = HEADING_PATTERN.exec(line);

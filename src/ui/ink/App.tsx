@@ -25,6 +25,7 @@ import { InputBox } from "./InputBox.js";
 import { PermissionDialog } from "./PermissionDialog.js";
 import { QuestionDialog } from "./QuestionDialog.js";
 import { SessionPicker } from "./SessionPicker.js";
+import { PersonaPanelContainer } from "./PersonaPanel.js";
 import { StatusBar } from "./StatusBar.js";
 import { Transcript } from "./TranscriptView.js";
 import { useBoxTop } from "./useBoxTop.js";
@@ -304,10 +305,12 @@ export interface AppProps {
   saveHistory?: (history: string[]) => void;
   /** 처음 그린 뒤 한 번 실행할 명령. */
   startupCommand?: string;
+  /** --persona로 켠 인격. 있으면 입력창 위에 캐릭터 패널을 그린다. */
+  persona?: UiRunOptions["persona"];
 }
 
 /** 대화, 대화상자, 입력창, 상태 줄을 배치하고 화면 전체 키(Esc·Ctrl+C·Shift+Tab)를 처리한다. Ctrl+D는 InputBox가 받는다. */
-export function App({ store, session, commandContext, initialHistory, saveHistory, startupCommand }: AppProps) {
+export function App({ store, session, commandContext, initialHistory, saveHistory, startupCommand, persona }: AppProps) {
   const {
     transcript,
     dialog,
@@ -455,6 +458,11 @@ export function App({ store, session, commandContext, initialHistory, saveHistor
             onPick={(sessionId) => store.answerPicker(sessionId)}
             onCancel={() => store.answerPicker(undefined)}
           />
+        </Box>
+      )}
+      {persona !== undefined && (
+        <Box marginTop={1}>
+          <PersonaPanelContainer persona={persona} session={session} />
         </Box>
       )}
       <Box ref={inputBoxRef} marginTop={1}>
