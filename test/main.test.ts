@@ -26,6 +26,16 @@ describe("shouldUsePlainUi", () => {
 });
 
 describe("parseArgs", () => {
+  it("--persona 이름을 읽고 --resume과 함께 쓸 수 있다", () => {
+    const sessionId = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    expect(parseArgs(["--persona", "rapi"]).persona).toBe("rapi");
+    expect(parseArgs(["--persona", "rapi", "--resume", sessionId])).toMatchObject({ persona: "rapi", resume: sessionId });
+  });
+
+  it("--persona가 없으면 persona 키가 없다", () => {
+    expect("persona" in parseArgs([])).toBe(false);
+  });
+
   it("--resume와 --model 값을 읽는다", () => {
     expect(parseArgs(["--resume", "abc", "--model", "claude-sonnet-5-5"])).toEqual({
       resume: "abc",

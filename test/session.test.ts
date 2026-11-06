@@ -338,6 +338,22 @@ describe("Session", () => {
     expect(eventsOfType(events, "turn_result")[1]?.totalCostUsd).toBeCloseTo(0.02);
   });
 
+  it("baseOptions의 hooks와 시스템 append가 resume 연결에도 그대로 전달된다", async () => {
+    const sdk = new FakeSdk();
+    const hooks = { Stop: [{ hooks: [async () => ({})] }] };
+    const systemPrompt = { type: "preset" as const, preset: "claude_code" as const, append: "# 인격" };
+    const session = new Session({
+      queryFn: sdk.queryFn,
+      baseOptions: { cwd: "/work", hooks, systemPrompt },
+      prompter: async () => "allow",
+      resume: "s1",
+    });
+    session.start();
+    await vi.waitFor(() => expect(sdk.calls).toHaveLength(1));
+    expect(sdk.calls[0]?.options).toMatchObject({ resume: "s1", systemPrompt });
+    expect(sdk.calls[0]?.options.hooks).toBe(hooks);
+  });
+
   it("재연결 시 대기 중이던 입력은 취소되고 그 사실을 error 이벤트로 알린다", async () => {
     const { sdk, session, events } = createSession({ resume: "s1" });
     session.start();

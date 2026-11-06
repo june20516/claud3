@@ -1,4 +1,5 @@
 import type { CommandContext } from "../commands.js";
+import type { PersonaRuntime } from "../persona/runtime.js";
 import type { Session } from "../session.js";
 import type { PermissionPrompter, UserQuestionPrompter } from "../types.js";
 import type { UsageSnapshot } from "../usageStore.js";
@@ -13,6 +14,8 @@ export interface UiRunOptions {
   /** 상태 줄에 보일 현재 디렉터리와 git 브랜치. 시작할 때와 턴이 끝날 때마다 다시 읽는다. */
   readWorkspace?: () => Promise<WorkspaceInfo>;
   recordUsage: (costUsd: number) => Promise<UsageSnapshot>;
+  /** --persona로 켠 인격. 화면이 구독해 캐릭터 패널을 그린다. */
+  persona?: Pick<PersonaRuntime, "snapshot" | "subscribe">;
 }
 
 export interface ChatUi {

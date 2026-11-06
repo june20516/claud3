@@ -6,6 +6,8 @@ export interface BaseOptionsParams {
   apiKey: string;
   model?: string;
   permissionMode?: SelectablePermissionMode;
+  /** --persona로 켠 인격. 시스템 프롬프트 끝에 붙일 소개와 SDK hooks. */
+  persona?: { systemAppend: string; hooks: NonNullable<Options["hooks"]> };
 }
 
 /**
@@ -13,11 +15,15 @@ export interface BaseOptionsParams {
  * 플러그인은 settingSources의 enabledPlugins로 자동 로드되므로 따로 넘기지 않는다
  * (docs/suberpowers/notes/probe-results.md 3번).
  */
-export function buildBaseOptions({ cwd, apiKey, model, permissionMode }: BaseOptionsParams): Options {
+export function buildBaseOptions({ cwd, apiKey, model, permissionMode, persona }: BaseOptionsParams): Options {
   return {
     cwd,
     settingSources: ["user", "project", "local"],
-    systemPrompt: { type: "preset", preset: "claude_code" },
+    systemPrompt:
+      persona === undefined
+        ? { type: "preset", preset: "claude_code" }
+        : { type: "preset", preset: "claude_code", append: persona.systemAppend },
+    ...(persona === undefined ? {} : { hooks: persona.hooks }),
     includePartialMessages: true,
     env: { ...process.env, ANTHROPIC_API_KEY: apiKey },
     ...(model === undefined ? {} : { model }),

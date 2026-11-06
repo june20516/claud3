@@ -36,4 +36,17 @@ describe("buildBaseOptions", () => {
     buildBaseOptions({ cwd: "/work", apiKey: "sk-test" });
     expect(process.env.ANTHROPIC_API_KEY).toBe(before);
   });
+
+  it("persona가 없으면 이전과 같은 옵션", () => {
+    const options = buildBaseOptions({ cwd: "/work", apiKey: "sk-test" });
+    expect(options.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
+    expect("hooks" in options).toBe(false);
+  });
+
+  it("persona가 있으면 시스템 프롬프트에 append하고 hooks를 붙인다", () => {
+    const hooks = { Stop: [{ hooks: [async () => ({})] }] };
+    const options = buildBaseOptions({ cwd: "/work", apiKey: "sk-test", persona: { systemAppend: "# 인격", hooks } });
+    expect(options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "# 인격" });
+    expect(options.hooks).toBe(hooks);
+  });
 });

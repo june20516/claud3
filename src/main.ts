@@ -7,6 +7,8 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { MissingApiKeyError, readApiKey } from "./auth.js";
 import { buildBaseOptions } from "./config.js";
 import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionModes.js";
+import { openPersona } from "./persona/bootstrap.js";
+import type { PersonaRuntime } from "./persona/runtime.js";
 import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
 import { loadHistoryLines } from "./sessionHistory.js";
@@ -24,6 +26,8 @@ export interface CliArgs {
   pickResume?: boolean;
   model?: string;
   permissionMode?: SelectablePermissionMode;
+  /** --persona <이름>. 인격을 켜고 시작한다. */
+  persona?: string;
   plain: boolean;
   help: boolean;
   version: boolean;
@@ -38,6 +42,7 @@ Claude Agent SDK로 실행하는 터미널 코딩 CLI입니다. API 키는 macOS
   --model <name>  사용할 모델 (예: claude-sonnet-5-5)
   --permission-mode <mode>  권한 모드 (default, acceptEdits, plan, auto)
                   생략하면 ~/.config/claud3/config.json의 permissionMode, 없으면 Claude Code 설정
+  --persona <이름>  인격을 켜고 시작 (세션에서 /persona-create <이름>으로 만듦)
   --plain         readline 화면으로 시작 (기본은 Ink 화면)
   -v, --version   버전 출력
   -h, --help      이 도움말 출력
@@ -78,6 +83,7 @@ export function parseArgs(argv: string[]): CliArgs {
       resume: { type: "string" },
       model: { type: "string" },
       "permission-mode": { type: "string" },
+      persona: { type: "string" },
       plain: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", short: "v", default: false },
@@ -98,6 +104,7 @@ export function parseArgs(argv: string[]): CliArgs {
     ...(values.resume === undefined ? {} : { resume: values.resume }),
     ...(values.model === undefined ? {} : { model: values.model }),
     ...(permissionMode === undefined ? {} : { permissionMode }),
+    ...(values.persona === undefined ? {} : { persona: values.persona }),
   };
 }
 
@@ -137,11 +144,28 @@ async function main(): Promise<number> {
     console.error(`설정 무시: ${warning}`);
   }
 
+  const env = { ...process.env, ANTHROPIC_API_KEY: apiKey };
+  let persona: PersonaRuntime | undefined;
+  if (args.persona !== undefined) {
+    const opened = await openPersona(args.persona, {
+      queryFn: query,
+      env,
+      onCost: (usd) => void addUsage(usd),
+      onWarning: (message) => console.error(message),
+    });
+    if (!opened.ok) {
+      console.error(opened.message);
+      return 1;
+    }
+    persona = opened.runtime;
+  }
+
   const baseOptions = buildBaseOptions({
     cwd: process.cwd(),
     apiKey,
     model: args.model,
     permissionMode: resolvePermissionMode(args.permissionMode, userConfig),
+    ...(persona === undefined ? {} : { persona: { systemAppend: persona.systemAppend, hooks: persona.hooks } }),
   });
   const historyFile = join(configDir(), "history");
   const ui: ChatUi =
@@ -169,6 +193,7 @@ async function main(): Promise<number> {
     ...(args.pickResume === true ? { startupCommand: "/resume" } : {}),
     readWorkspace: () => readWorkspaceInfo({ cwd: process.cwd() }),
     recordUsage: (costUsd) => addUsage(costUsd),
+    ...(persona === undefined ? {} : { persona }),
   });
   return 0;
 }
