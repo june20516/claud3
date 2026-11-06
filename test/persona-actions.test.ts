@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createReactionJudge, extractActionLines, resolveReactions } from "../src/persona/actions.js";
+import { createActionLineTracker, createReactionJudge, extractActionLines, resolveReactions } from "../src/persona/actions.js";
 import type { ReactionJudge } from "../src/persona/actions.js";
 import { initialMood } from "../src/persona/mood.js";
 import { OneShotQueryError, runStructuredQuery } from "../src/persona/oneShot.js";
@@ -40,6 +40,31 @@ describe("extractActionLines", () => {
   it("코드 블록 안의 괄호 줄은 행동이 아니고, 밖의 (foo())는 행동이다", () => {
     expect(extractActionLines("```\n(foo())\n```")).toEqual([]);
     expect(extractActionLines("(foo())")).toEqual(["foo()"]);
+  });
+});
+
+describe("createActionLineTracker", () => {
+  it("조각으로 들어와도 완성된 줄에서만 행동을 찾고, 새 줄만 처리한다", () => {
+    const tracker = createActionLineTracker();
+    expect(tracker.push("네\n(의자에 털썩 앉")).toBeUndefined();
+    expect(tracker.push("는다)\n(커피를")).toBe("의자에 털썩 앉는다");
+    expect(tracker.push(" 마신다)\n")).toBe("커피를 마신다");
+    expect(tracker.push("그냥 문장\n")).toBeUndefined();
+  });
+
+  it("조각에 걸친 코드 블록 안의 괄호 줄은 행동이 아니다", () => {
+    const tracker = createActionLineTracker();
+    expect(tracker.push("``")).toBeUndefined();
+    expect(tracker.push("`\n(foo())\n")).toBeUndefined();
+    expect(tracker.push("```\n(bar)\n")).toBe("bar");
+  });
+
+  it("end는 줄바꿈 없이 남은 마지막 줄까지 보고 상태를 초기화한다", () => {
+    const tracker = createActionLineTracker();
+    tracker.push("```\n");
+    expect(tracker.end()).toBeUndefined();
+    tracker.push("(고개를 끄덕인다)");
+    expect(tracker.end()).toBe("고개를 끄덕인다");
   });
 });
 

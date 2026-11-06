@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import { useEffect, useRef, useState } from "react";
-import { extractActionLines } from "../../persona/actions.js";
+import { createActionLineTracker } from "../../persona/actions.js";
 import type { Intensity, MoodReading } from "../../persona/mood.js";
 import type { Direction } from "../../persona/profile.js";
 import type { PersonaRuntime, PersonaSnapshot } from "../../persona/runtime.js";
@@ -26,11 +26,6 @@ export function faceFor(reading: MoodReading): string {
 export function meterBar(value: number, width: number): string {
   const filled = Math.min(width, Math.round((Math.abs(value) / 100) * width));
   return "▓".repeat(filled) + "░".repeat(width - filled);
-}
-
-/** 응답 글에서 마지막 행동 줄의 안쪽 문장. */
-export function latestActionLine(text: string): string | undefined {
-  return extractActionLines(text).at(-1);
 }
 
 function signed(value: number): string {
@@ -76,33 +71,27 @@ function usePersonaSnapshot(persona: PersonaSource): PersonaSnapshot {
  */
 function useLatestAction(session: EventSource): string | undefined {
   const [latestAction, setLatestAction] = useState<string | undefined>(undefined);
-  const turnText = useRef("");
   const shown = useRef<string | undefined>(undefined);
   useEffect(() => {
     let active = true;
+    const tracker = createActionLineTracker();
+    const show = (action: string | undefined): void => {
+      if (action !== undefined && action !== shown.current) {
+        shown.current = action;
+        setLatestAction(action);
+      }
+    };
     // Session.onEvent에는 해제 함수가 없어 active 플래그로 막는다.
     session.onEvent((event) => {
       if (!active) {
         return;
       }
-      const show = (text: string): void => {
-        const action = latestActionLine(text);
-        if (action !== undefined && action !== shown.current) {
-          shown.current = action;
-          setLatestAction(action);
-        }
-      };
       if (event.type === "turn_result") {
         // 줄바꿈 없이 끝난 마지막 줄도 턴이 끝나면 완성된 것이다.
-        show(turnText.current);
-        turnText.current = "";
-        return;
+        show(tracker.end());
+      } else if (event.type === "text_delta") {
+        show(tracker.push(event.text));
       }
-      if (event.type !== "text_delta") {
-        return;
-      }
-      turnText.current += event.text;
-      show(turnText.current.slice(0, turnText.current.lastIndexOf("\n") + 1));
     });
     return () => {
       active = false;

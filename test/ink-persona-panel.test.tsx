@@ -6,7 +6,7 @@ import { initialMood, readMood } from "../src/persona/mood.js";
 import type { PersonaProfile } from "../src/persona/profile.js";
 import type { PersonaSnapshot } from "../src/persona/runtime.js";
 import type { UiEvent } from "../src/types.js";
-import { PersonaPanel, PersonaPanelContainer, faceFor, latestActionLine, meterBar } from "../src/ui/ink/PersonaPanel.js";
+import { PersonaPanel, PersonaPanelContainer, faceFor, meterBar } from "../src/ui/ink/PersonaPanel.js";
 
 const PROFILE = JSON.parse(
   readFileSync(new URL("./fixtures/persona-rapi.json", import.meta.url), "utf8"),
@@ -33,13 +33,6 @@ describe("meterBar", () => {
     expect(meterBar(62, 10)).toBe("▓▓▓▓▓▓░░░░");
     expect(meterBar(-100, 10)).toBe("▓▓▓▓▓▓▓▓▓▓");
     expect(meterBar(0, 10)).toBe("░░░░░░░░░░");
-  });
-});
-
-describe("latestActionLine", () => {
-  it("응답 글에서 마지막 행동 줄을 고르고, 없으면 undefined", () => {
-    expect(latestActionLine("(앉는다)\n네\n(한숨을 쉰다)\n")).toBe("한숨을 쉰다");
-    expect(latestActionLine("```\n(foo())\n```")).toBeUndefined();
   });
 });
 

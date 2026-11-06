@@ -11,21 +11,53 @@ const CODE_FENCE = "```";
 const JUDGE_MODEL = "claude-haiku-5-5";
 const ONE_SHOT_MAX_TURNS = 3;
 
+/** 한 줄을 읽어 코드 블록 상태를 갱신하고, 코드 블록 밖의 행동 줄이면 안쪽 문장을 돌려준다. */
+function readLine(line: string, state: { inCodeBlock: boolean }): string | undefined {
+  if (line.trimStart().startsWith(CODE_FENCE)) {
+    state.inCodeBlock = !state.inCodeBlock;
+    return undefined;
+  }
+  const match = state.inCodeBlock ? null : ACTION_LINE_PATTERN.exec(line);
+  return match?.[1]?.trim();
+}
+
 /** 코드 블록 밖에서 줄 전체가 괄호인 줄의 안쪽 문장. */
 export function extractActionLines(text: string): string[] {
-  const actions: string[] = [];
-  let inCodeBlock = false;
-  for (const line of text.split("\n")) {
-    if (line.trimStart().startsWith(CODE_FENCE)) {
-      inCodeBlock = !inCodeBlock;
-      continue;
+  const state = { inCodeBlock: false };
+  return text.split("\n").flatMap((line) => readLine(line, state) ?? []);
+}
+
+export interface ActionLineTracker {
+  /** 스트리밍 조각을 더하고, 새로 완성된 줄 중 마지막 행동을 돌려준다. */
+  push(text: string): string | undefined;
+  /** 줄바꿈 없이 남은 마지막 줄까지 읽고 상태를 초기화한다(턴 끝). */
+  end(): string | undefined;
+}
+
+/** 응답을 처음부터 다시 읽지 않고 새로 완성된 줄만 처리한다. 긴 응답에서도 조각마다 드는 일이 일정하다. */
+export function createActionLineTracker(): ActionLineTracker {
+  const state = { inCodeBlock: false };
+  let pending = "";
+  const latestOf = (lines: string[]): string | undefined => {
+    let latest: string | undefined;
+    for (const line of lines) {
+      latest = readLine(line, state) ?? latest;
     }
-    const match = inCodeBlock ? null : ACTION_LINE_PATTERN.exec(line);
-    if (match?.[1] !== undefined) {
-      actions.push(match[1].trim());
-    }
-  }
-  return actions;
+    return latest;
+  };
+  return {
+    push(text) {
+      const lines = (pending + text).split("\n");
+      pending = lines.pop() ?? "";
+      return latestOf(lines);
+    },
+    end() {
+      const latest = latestOf([pending]);
+      pending = "";
+      state.inCodeBlock = false;
+      return latest;
+    },
+  };
 }
 
 /** 인격이 이 행동에 어떻게 반응할지 판단한다. 판단하지 못하면 undefined. */
