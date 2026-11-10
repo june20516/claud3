@@ -38,6 +38,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/persona/store.ts` | `<configDir>/personas/`의 인격·기분 파일 읽기/쓰기, 깨진 기분 파일은 `.broken`으로 |
 | `src/persona/runtime.ts` | SDK hooks(`UserPromptSubmit`·`PostToolUse(Failure)`·`Stop`)로 기분 갱신·저장·주입, 직렬화, 예외 격리, 구독 |
 | `src/persona/bootstrap.ts` | `--persona` 이름으로 인격·기분을 읽어 런타임 생성, 실패 문구 |
+| `src/persona/validateFile.ts` | `--validate-persona`: 인격 파일 검사(`validateProfile` + 파일 이름과 `name` 일치), 종료 코드 0·1·2와 stderr 줄 (API 키·SDK·네트워크 없음) |
 | `src/persona/create.ts` | `/persona-create` 흐름: 참고 자료 → 조사(WebSearch·WebFetch만, 설정 격리) → 설문 → 생성 → 확인·저장 |
 | `src/ui/runOptions.ts` | `UiRunOptions`(`startupCommand` 포함), `ChatUi` 타입(`prompter`·`asker`). 명령 출력(`print`)과 세션 고르기(`pickSession`)는 화면이 제공한다 |
 | `src/ui/plain.ts` | readline 화면(`--plain`, TTY가 아닐 때), 상태 줄(권한 모드 포함), 여러 줄 입력, 입력 기록, 권한 질문, 계획 승인 질문, Shift+Tab 모드 순환. 로직 없이 이벤트를 그리기만 한다 |
@@ -53,7 +54,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/ui/ink/StatusBar.tsx` | 하단 상태 줄 (폭 전체 배경 띠, 왼쪽 디렉터리·브랜치, 오른쪽 모델·모드·비용, 좁으면 디렉터리부터 자름) |
 | `src/ui/ink/useBoxTop.ts` | 입력창 top 측정(실제 커서 위치용). 값이 바뀔 때만 setState — ink `useBoxMetrics`는 연속 갱신에서 "Maximum update depth"를 일으켜 쓰지 않는다 |
 | `src/ui/ink/terminalSize.ts` | 터미널 폭 조회 (입력창 커서·diff 배경 폭·상태 줄 배치) |
-| `src/main.ts` | 인자 처리와 조립. `--plain`이거나 stdin·stdout이 TTY가 아니면 plain 화면, 아니면 Ink 화면. `--persona`면 인격 런타임을 열어 SDK 옵션과 화면에 넘긴다 |
+| `src/main.ts` | 인자 처리와 조립. `--plain`이거나 stdin·stdout이 TTY가 아니면 plain 화면, 아니면 Ink 화면. `--persona`면 인격 런타임을 열어 SDK 옵션과 화면에 넘긴다. `--validate-persona <파일>`은 `--help`·`--version`처럼 `readApiKey()`보다 먼저 처리해 검사 결과만 내고 끝낸다(종료 코드·stderr 형식은 persona-lab과의 계약) |
 | `scripts/promote.sh`, `scripts/rollback.sh` | 안정판 승격·되돌리기 |
 
 ## 명령

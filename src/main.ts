@@ -10,6 +10,7 @@ import { parsePermissionMode, unknownPermissionModeMessage } from "./permissionM
 import { setActionLineStyling } from "./markdown.js";
 import { openPersona } from "./persona/bootstrap.js";
 import { createPersona } from "./persona/create.js";
+import { validatePersonaFile } from "./persona/validateFile.js";
 import type { PersonaRuntime } from "./persona/runtime.js";
 import type { SelectablePermissionMode } from "./permissionModes.js";
 import { Session } from "./session.js";
@@ -30,6 +31,8 @@ export interface CliArgs {
   permissionMode?: SelectablePermissionMode;
   /** --persona <이름>. 인격을 켜고 시작한다. */
   persona?: string;
+  /** --validate-persona <파일>. 인격 파일만 검사하고 끝낸다. */
+  validatePersona?: string;
   plain: boolean;
   help: boolean;
   version: boolean;
@@ -45,6 +48,7 @@ Claude Agent SDK로 실행하는 터미널 코딩 CLI입니다. API 키는 macOS
   --permission-mode <mode>  권한 모드 (default, acceptEdits, plan, auto)
                   생략하면 ~/.config/claud3/config.json의 permissionMode, 없으면 Claude Code 설정
   --persona <이름>  인격을 켜고 시작 (세션에서 /persona-create <이름>으로 만듦)
+  --validate-persona <파일>  인격 파일 검사 (유효 0, 형식·이름 문제 1, 파일·JSON 오류 2)
   --plain         readline 화면으로 시작 (기본은 Ink 화면)
   -v, --version   버전 출력
   -h, --help      이 도움말 출력
@@ -86,6 +90,7 @@ export function parseArgs(argv: string[]): CliArgs {
       model: { type: "string" },
       "permission-mode": { type: "string" },
       persona: { type: "string" },
+      "validate-persona": { type: "string" },
       plain: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", short: "v", default: false },
@@ -107,13 +112,14 @@ export function parseArgs(argv: string[]): CliArgs {
     ...(values.model === undefined ? {} : { model: values.model }),
     ...(permissionMode === undefined ? {} : { permissionMode }),
     ...(values.persona === undefined ? {} : { persona: values.persona }),
+    ...(values["validate-persona"] === undefined ? {} : { validatePersona: values["validate-persona"] }),
   };
 }
 
-async function main(): Promise<number> {
+export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   let args: CliArgs;
   try {
-    args = parseArgs(process.argv.slice(2));
+    args = parseArgs(argv);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     console.error(USAGE);
@@ -128,6 +134,14 @@ async function main(): Promise<number> {
   if (args.version) {
     console.log(readVersion());
     return 0;
+  }
+
+  if (args.validatePersona !== undefined) {
+    const { exitCode, errors } = await validatePersonaFile(args.validatePersona);
+    for (const line of errors) {
+      console.error(line);
+    }
+    return exitCode;
   }
 
   let apiKey: string;

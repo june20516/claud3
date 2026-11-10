@@ -30,6 +30,7 @@ Max 요금제로 받은 프로모션 API 크레딧을 쓰기 위한 개인용 �
 | `claud3 --resume <ID>` | 이전 세션을 이어서 시작 (이전 대화의 마지막 100줄을 먼저 보여 줌) |
 | `claud3 --permission-mode <mode>` | 권한 모드를 지정해 시작 (`default`, `acceptEdits`, `plan`, `auto`) |
 | `claud3 --persona <이름>` | 인격을 켜고 시작 ([인격](#인격) 참고) |
+| `claud3 --validate-persona <파일>` | 인격 파일 검사. 유효하면 종료 코드 0(출력 없음), 형식 문제나 파일 이름과 `name` 불일치는 1(stderr에 문제마다 `<path>: <message>`), 파일 없음·읽기 실패·JSON 형식 오류는 2. API 키를 읽지 않음 |
 | `claud3 --help` · `--version` | 도움말 · 버전 |
 
 기본 모델은 `~/.claude` 설정을 따릅니다.

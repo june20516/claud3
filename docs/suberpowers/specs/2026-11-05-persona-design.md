@@ -211,6 +211,7 @@
 | `src/persona/store.ts` | 인격·기분 파일 읽기/쓰기, 인격 목록 | 파일 |
 | `src/persona/runtime.ts` | 위를 조립해 SDK `hooks`와 `systemPrompt.append`를 만들고, 상태 변경을 구독할 수 있게 한다(`subscribe`). hook 내부 예외는 잡아서 그 턴만 기분 처리를 건너뛴다 | 조립 |
 | `src/persona/bootstrap.ts` | `--persona` 이름으로 인격·기분을 읽어 런타임을 만들고, 실패 문구를 만든다 | 조립 |
+| `src/persona/validateFile.ts` | `--validate-persona <파일>`: `validateProfile`과 파일 이름·`name` 일치 검사, 종료 코드 0·1·2 (2026-11-10 persona-lab 요청으로 추가) | 파일 |
 | `src/persona/create.ts` | `/persona-create` 흐름, `researchPersona`, 생성 호출(queryFn 주입) | 조립 |
 
 기존 파일 변경:
@@ -230,6 +231,7 @@
 |---|---|
 | `--persona`의 인격 파일 없음 | 사용 가능한 인격 목록을 보이고 종료 코드 1 |
 | 인격 파일 검증 실패 | 필드 경로·이유를 보이고 종료 코드 1 |
+| `--validate-persona` 검사 | 유효 0(출력 없음), 스키마 위반·파일 이름과 `name` 불일치 1(stderr에 `<path>: <message>` 한 줄씩, 불일치는 path `name`), 파일 없음·읽기 실패·JSON 형식 오류 2(한 줄 설명). 외부 생산자(persona-lab)와의 계약이므로 형식을 바꾸지 않는다 |
 | 기분 파일이 깨짐 | 경고를 보이고 초기 상태로 시작(기존 파일은 `.broken`으로 옮김) |
 | 시스템 신호 읽기 실패 | 그 신호만 건너뜀 |
 | 반응 판단기 시간 초과·실패 | 효과 0, 기억하지 않음, 행동 사실만 주입 |
