@@ -56,6 +56,32 @@ export const CPU_BUSY_RATIO = 0.8;
 /** 반응 하나의 stress·dopamine 절댓값 상한. */
 export const REACTION_LIMIT = 40;
 export const JUDGE_TIMEOUT_MS = 10_000;
+
+// 기억(경험 기록) — docs/suberpowers/specs/2026-11-19-persona-memory-design.md 3.2
+export const MEMORY_LIMIT = 300;
+export const MEMORY_SESSION_LIMIT = 20;
+export const RECORD_EVERY_TURNS = 10;
+export const STARTUP_MEMORIES = 6;
+/** 회상 기준 bigram 유사도. 써 보며 조정한다. */
+export const RECALL_SIMILARITY = 0.35;
+export const RECALL_MAX = 2;
+export const RECALL_COOLDOWN_TURNS = 10;
+/** 정규화한 입력이 이보다 짧으면 회상하지 않는다(짧은 글자의 우연한 일치 방지). */
+export const RECALL_MIN_CHARS = 4;
+/** 회상 이벤트 크기(중요도별). */
+export const RECALL_DELTAS: Readonly<Record<1 | 2 | 3, number>> = { 1: 3, 2: 5, 3: 8 };
+export const RECORD_TIMEOUT_MS = 60_000;
+export const RECORD_BUDGET_USD = 0.05;
+export const RECORD_MAX_FAILURES = 3;
+/** 압축 후에는 원문을 읽을 수 없어 PreCompact에서 기록을 기다린다. */
+export const PRECOMPACT_WAIT_MS = 20_000;
+export const SESSION_STALE_DAYS = 30;
+/** 런타임이 메모리에 두는 기분 표시점(극단 진입·탈출, 부호 전환) 수. */
+export const MOOD_MARKERS = 20;
+export const SEGMENT_LIMITS = { userChars: 1_000, assistantChars: 400, totalChars: 24_000 } as const;
+export const RECENT_SUMMARIES_FOR_RECORD = 20;
+export const SUMMARY_MAX = 120;
+export const FEELING_MAX = 60;
 /** 한 입력에서 판단기를 부르는 최대 횟수. 판단을 차례로 기다리므로 hook 시간 제한(30초)을 넘지 않게 한다. */
 export const MAX_JUDGED_ACTIONS = 2;
 

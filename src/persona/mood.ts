@@ -42,11 +42,16 @@ export interface MoodState {
   learnedReactions: LearnedReaction[];
 }
 
-export type MoodEventKind = keyof typeof EVENT_DELTAS | "userAction";
+export type MoodEventKind = keyof typeof EVENT_DELTAS | "userAction" | "recall";
+
+/** 기본 변화량이 표에 없는 이벤트. 값을 이벤트가 직접 들고 온다. */
+type CustomEventKind = "userAction" | "recall";
 
 export type MoodEvent =
-  | { kind: Exclude<MoodEventKind, "userAction"> }
-  | { kind: "userAction"; action: string; stress: number; dopamine: number };
+  | { kind: Exclude<MoodEventKind, CustomEventKind> }
+  | { kind: "userAction"; action: string; stress: number; dopamine: number }
+  /** 기억이 떠오름. stress·dopamine은 민감도 적용 전 기본 변화량이다. */
+  | { kind: "recall"; summary: string; stress: number; dopamine: number };
 
 export type Intensity = "calm" | "normal" | "strong" | "extreme";
 
@@ -60,8 +65,10 @@ export interface SignFlip {
   to: "positive" | "negative";
 }
 
-/** 변동 이유 문구. userAction은 행동 문장을 그대로 쓴다. */
-export const EVENT_LABELS: Record<Exclude<MoodEventKind, "userAction">, string> = {
+const RECALL_LABEL_CHARS = 20;
+
+/** 변동 이유 문구. userAction은 행동 문장을 그대로, recall은 "기억: <요약 앞 20자>…"로 쓴다. */
+export const EVENT_LABELS: Record<Exclude<MoodEventKind, CustomEventKind>, string> = {
   toolFailure: "도구 실패",
   toolSuccess: "도구 성공",
   testPassed: "테스트 통과",
@@ -177,7 +184,7 @@ function eventDelta(state: MoodState, event: MoodEvent, profile: PersonaProfile,
   if (event.kind === "userAction") {
     return { stress: event.stress, dopamine: event.dopamine };
   }
-  const base = EVENT_DELTAS[event.kind];
+  const base = event.kind === "recall" ? { stress: event.stress, dopamine: event.dopamine } : EVENT_DELTAS[event.kind];
   const baseStress =
     event.kind === "toolFailure"
       ? Math.min(base.stress + FAILURE_STREAK_BONUS * state.failureStreak, FAILURE_EVENT_MAX)
@@ -199,6 +206,18 @@ function nextFailureStreak(state: MoodState, event: MoodEvent): number {
   return state.failureStreak;
 }
 
+function reasonText(event: MoodEvent): string {
+  if (event.kind === "userAction") {
+    return event.action;
+  }
+  if (event.kind === "recall") {
+    const summary =
+      event.summary.length > RECALL_LABEL_CHARS ? `${event.summary.slice(0, RECALL_LABEL_CHARS)}…` : event.summary;
+    return `기억: ${summary}`;
+  }
+  return EVENT_LABELS[event.kind];
+}
+
 /** spec 4.2 순서: 민감도 → 요일 → 커플링 → 범위·업무 시간 상한. */
 export function applyEvent(state: MoodState, event: MoodEvent, profile: PersonaProfile, now: Date): MoodState {
   const delta = eventDelta(state, event, profile, now);
@@ -211,7 +230,7 @@ export function applyEvent(state: MoodState, event: MoodEvent, profile: PersonaP
   const appliedDopamine = dopamine - state.dopamine;
   const reason: MoodReason = {
     at: now.toISOString(),
-    text: event.kind === "userAction" ? event.action : EVENT_LABELS[event.kind],
+    text: reasonText(event),
     stress: appliedStress,
     dopamine: appliedDopamine,
   };

@@ -192,3 +192,38 @@ describe("parseMoodState", () => {
     expect(parseMoodState({ ...mood(), dopamine: "x" })).toBeUndefined();
   });
 });
+
+describe("recall 이벤트", () => {
+  const neutral = profileWith({ sensitivity: { stress: 3, dopamine: 3 }, workHours: null });
+  const recall = (summary: string, stress: number, dopamine: number): MoodEvent => ({
+    kind: "recall",
+    summary,
+    stress,
+    dopamine,
+  });
+
+  it("민감도 배율 1이면 기본 변화량 그대로", () => {
+    const next = apply(mood(), [recall("테스트가 드디어 통과했다", 0, 5)], neutral);
+    expect(next.stress).toBe(0);
+    expect(next.dopamine).toBe(5);
+  });
+
+  it("민감도 배율을 적용한다", () => {
+    const sensitive = profileWith({ sensitivity: { stress: 5, dopamine: 3 }, workHours: null });
+    expect(apply(mood(), [recall("빌드가 또 깨졌다", 3, 0)], sensitive).stress).toBe(6);
+  });
+
+  it("이유 문구는 '기억: ' 뒤에 요약", () => {
+    const next = apply(mood(), [recall("테스트가 드디어 통과했다", 0, 5)], neutral);
+    expect(next.recentReasons.at(-1)?.text).toBe("기억: 테스트가 드디어 통과했다");
+  });
+
+  it("요약이 20자를 넘으면 앞 20자와 …", () => {
+    const next = apply(mood(), [recall("가나다라마바사아자차카타파하가나다라마바사아", 0, 5)], neutral);
+    expect(next.recentReasons.at(-1)?.text).toBe("기억: 가나다라마바사아자차카타파하가나다라마바…");
+  });
+
+  it("연속 실패 수를 바꾸지 않는다", () => {
+    expect(apply(mood({ failureStreak: 2 }), [recall("실수했다", 3, 0)], neutral).failureStreak).toBe(2);
+  });
+});
