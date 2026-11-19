@@ -69,16 +69,17 @@
       "cursor": "메시지 uuid 또는 null",
       "failures": 0,
       "lastSeenAt": "2026-11-19T07:02:00.000Z",
-      "lastReadAt": "2026-11-19T07:02:00.000Z"
+      "lastReadAt": "2026-11-19T07:02:00.000Z",
+      "recordedUntil": "2026-11-19T06:41:00.000Z"
     }
   ]
 }
 ```
 
 - `experiences`: 최대 300개. `summary` 120자, `feeling` 60자 이내(넘으면 자른다). `importance`는 1~3 정수. `id`는 기록 시각 + 그 기록 안의 순번.
-- `moodReasons`: 구간 시간대(구간 첫 메시지 ~ 마지막 메시지)에 있었던 기분 변동 이유 문구. `MoodState.recentReasons`(최근 10개)에서 고르므로, 시간이 지난 따라잡기 기록에서는 비어 있을 수 있다. 비어 있으면 `moodDelta`는 0이고 회상 이벤트가 생기지 않는다.
+- `moodReasons`: 구간 시간대(그 세션의 `recordedUntil` ~ 기록 시각)에 있었던 기분 변동 이유 문구. `MoodState.recentReasons`(최근 10개)에서 고르므로, 시간이 지난 따라잡기 기록에서는 비어 있을 수 있다. 비어 있으면 `moodDelta`는 0이고 회상 이벤트가 생기지 않는다.
 - `moodDelta`: 같은 이유들의 stress·dopamine 변화 합계. 회상 이벤트의 방향을 정한다.
-- `sessions`: 이 인격이 켜졌던 세션. 최근 `lastSeenAt` 순 20개까지. `cursor`는 마지막으로 기록에 넣은 메시지 uuid(처음 `null`). `failures`는 현재 구간의 연속 실패 횟수. `lastReadAt`은 세션 기록을 마지막으로 읽은 시각.
+- `sessions`: 이 인격이 켜졌던 세션. 최근 `lastSeenAt` 순 20개까지. `cursor`는 마지막으로 기록에 넣은 메시지 uuid(처음 `null`). `failures`는 현재 구간의 연속 실패 횟수. `lastReadAt`은 세션 기록을 마지막으로 읽은 시각. `recordedUntil`은 등록 시각으로 시작해 기록에 성공할 때마다 기록 시각으로 바뀐다(`SessionMessage` 타입에 시각 필드가 보장되지 않아 구간 시간대를 이것으로 잡는다).
 - 파일이 없으면 빈 목록으로 시작한다. 기분 파일과 따로 두어 저장 주기와 손상 범위를 나눈다.
 - 세션별 턴 수는 파일에 저장하지 않는다(재시작 후 0부터 세도 따라잡기가 남은 구간을 처리한다).
 
@@ -97,7 +98,8 @@
 | `RECORD_TIMEOUT_MS` | 60,000 | Haiku 호출 시간 제한 |
 | `RECORD_BUDGET_USD` | 0.05 | 호출당 `maxBudgetUsd` |
 | `RECORD_MAX_FAILURES` | 3 | 같은 구간 연속 실패 시 포기 |
-| `PRECOMPACT_WAIT_MS` | 20,000 | `PreCompact`에서 기록을 기다리는 최대 시간(5장 확인 결과에 따라 0일 수 있음) |
+| `PRECOMPACT_WAIT_MS` | 20,000 | `PreCompact`에서 기록을 기다리는 최대 시간(압축 후에는 원문을 읽을 수 없음, 5장) |
+| `MOOD_MARKERS` | 20 | 런타임이 메모리에 두는 기분 표시점 수 |
 | `SESSION_STALE_DAYS` | 30 | 이 기간 넘게 읽지 못한 세션은 목록에서 뺀다 |
 | 구간 길이 | 사용자 입력 1,000자, 응답 400자, 전체 24,000자 | 넘으면 메시지별로 자르고, 전체는 오래된 앞부분부터 버린다 |
 
@@ -111,9 +113,9 @@
 
 1. 요청은 `(sessionId, 이유)`. 같은 세션의 요청이 대기 중이면 합친다. 기록은 한 번에 하나만 돈다.
 2. `getSessionMessages(sessionId, { dir: cwd })`로 메시지를 읽고 `lastReadAt`을 갱신한다.
-3. `segment`가 커서 다음부터 끝까지를 구간으로 자른다(커서가 `null`이면 처음부터). 커서 메시지가 목록에 없으면 마지막 compact 요약 다음부터로 본다(5장 확인 결과로 확정).
+3. `segment`가 커서 다음부터 끝까지를 구간으로 자른다(커서가 `null`이면 처음부터). 커서 메시지가 목록에 없으면(압축으로 사라짐) 마지막 compact 요약(`isCompactSummary`) 다음부터로 본다.
 4. 구간에 사용자 입력이 없으면 호출하지 않고 끝낸다(커서도 그대로).
-5. Haiku를 `runStructuredQuery`로 부른다(도구 없음, `settingSources: []`, `outputFormat` JSON schema, `maxTurns` 1, `maxBudgetUsd` 0.05, 60초 제한).
+5. Haiku를 `runStructuredQuery`로 부른다(도구 없음, `settingSources: []`, `outputFormat` JSON schema, `maxTurns` 3(구조화 출력이 내부 도구 호출로 끝나 1턴으로 모자랄 수 있음, 기존 판단기와 같음), `maxBudgetUsd` 0.05, 60초 제한).
 6. 성공하면 경험을 추가하고 개수를 정리한 뒤, 커서를 구간 마지막 메시지로 옮기고 `failures`를 0으로 해서 한 번에 저장한다. 고른 경험이 0개여도 커서는 옮긴다.
 7. 비용은 사용량 기록에 합산한다.
 
@@ -122,8 +124,8 @@
 | 시점 | 동작 |
 |---|---|
 | `Stop` | 그 세션의 턴 수를 올리고, 10이 되면 기록 요청 후 0으로. 기다리지 않는다 |
-| `PreCompact` | 기록 요청 후 `PRECOMPACT_WAIT_MS`까지 기다린다. 압축 후에도 세션 기록에 원문이 남으면 기다리지 않는다(5장) |
-| `SessionEnd` | 기록 요청. 기다리지 않는다. 종료로 끊기면 다음 시작 때 따라잡는다 |
+| `PreCompact` | 기록 요청 후 `PRECOMPACT_WAIT_MS`까지 기다린다. 압축 후에는 원문을 읽을 수 없다(5장) |
+| `SessionEnd` | 기록 요청. 기다리지 않는다. `/clear`에서만 불린다. 종료·`/resume`(query를 닫음)에서는 불리지 않으므로 그 구간은 다음 시작 때 따라잡는다 |
 | 시작 | `sessions` 중 커서 뒤에 메시지가 남은 세션을 차례로 백그라운드 기록. `SESSION_STALE_DAYS` 넘게 못 읽은 세션은 목록에서 뺀다 |
 
 ### 4.4 Haiku 입력·출력
@@ -133,7 +135,7 @@
 - 인격 소개: 이름, 요약, 관계, 말투 예시, 말버릇.
 - 선정 기준과 중요도 표(4.5).
 - 최근 경험 20개의 `summary`(같은 종류를 다시 고르지 않게).
-- 구간 시간대의 기분 변동 이유. 극단 진입·탈출이나 부호 전환이 있었으면 "강한 후보" 표시.
+- 구간 시간대의 기분 변동 이유. 런타임이 기록한 기분 표시점(극단 진입·탈출, 부호 전환) 중 구간 시간대의 것이 있으면 "강한 후보"로 표시한다. 표시점은 메모리에만 최근 `MOOD_MARKERS`개를 두므로 따라잡기 기록에는 없다.
 - 앞 구간의 마지막 사용자 입력·응답 2쌍(맥락 참고용, 기록 대상 아님).
 - 구간 대화: 사용자 입력과 응답 텍스트, 도구는 `⏺ 이름 (성공|실패)`만. 도구 출력 본문은 넣지 않는다.
 
@@ -196,15 +198,15 @@
 - 민감도 배율·커플링 등 기존 보정을 다른 이벤트처럼 적용한다.
 - 변동 이유 문구: `기억: <summary 앞 20자>…`.
 
-## 5. 확인할 것 (plan 첫 단계)
+## 5. SDK 확인 결과
 
 실제 SDK로 확인하고 `docs/suberpowers/notes/`에 결과를 남긴 뒤 아래 규칙을 확정한다.
 
-1. 세션 진행 중에도 `getSessionMessages`가 방금 끝난 턴까지 돌려주는가. 아니면 접근 A를 다시 검토한다.
-2. compact 후 `getSessionMessages`가 압축 전 메시지를 돌려주는가.
-   - 돌려주면: `PRECOMPACT_WAIT_MS`는 0(기다리지 않음), 커서는 항상 찾을 수 있다.
-   - 안 돌려주면: `PreCompact`에서 기다리고, 커서를 못 찾으면 마지막 compact 요약 다음부터 본다.
-3. `SessionEnd` 훅이 `/clear`·`/resume`·종료에서 각각 불리는가.
+1. 세션 진행 중에도 `getSessionMessages`가 방금 끝난 턴까지 돌려주는가. → **돌려준다. 접근 A 유지.**
+2. compact 후 `getSessionMessages`가 압축 전 메시지를 돌려주는가. → **돌려주지 않는다**(6개 중 1개만 남음). `PreCompact`에서 기다리고(`PRECOMPACT_WAIT_MS` 20,000), 커서를 못 찾으면 마지막 compact 요약 다음부터 본다.
+3. `SessionEnd` 훅이 `/clear`·`/resume`·종료에서 각각 불리는가. → **`/clear`에서만 불린다.** query를 닫는 종료·`/resume`에서는 불리지 않아 따라잡기로 처리한다.
+
+결과 기록: `docs/suberpowers/notes/persona-memory-probe.md`.
 
 ## 6. 에러 처리
 
