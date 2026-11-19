@@ -1398,3 +1398,19 @@ describe("명령 중단", () => {
     expect(calls).toBe(1);
   });
 });
+
+describe("compact 진행 표시", () => {
+  it("압축 중이면 대기 줄에 '대화 압축 중'을 보인다", () => {
+    const started = startTurn(initialTranscript, Date.now() - 3_000);
+    const state = reduceTranscript(started, { type: "compact_start" });
+    const text = plainFrame(render(<Transcript state={state} />).lastFrame);
+
+    expect(text).toContain("대화 압축 중… (3초");
+  });
+
+  it("턴 밖에서 compact_start가 오면(/compact 명령) 턴을 시작해 압축 중으로 보인다", () => {
+    const store = new InkUiStore();
+    store.applyEvent({ type: "compact_start" });
+    expect(store.getSnapshot().transcript.turn?.compacting).toBe(true);
+  });
+});

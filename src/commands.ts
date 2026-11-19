@@ -11,7 +11,7 @@ import { remainingCreditUsd } from "./usageStore.js";
 import type { UserQuestionPrompter } from "./types.js";
 import type { UsageSnapshot } from "./usageStore.js";
 
-const COMMAND_NAMES = ["cost", "clear", "model", "mode", "resume", "help", "persona-create"] as const;
+const COMMAND_NAMES = ["cost", "clear", "compact", "model", "mode", "resume", "help", "persona-create"] as const;
 type CommandName = (typeof COMMAND_NAMES)[number];
 
 export type ParsedInput =
@@ -21,7 +21,16 @@ export type ParsedInput =
 export interface CommandContext {
   session: Pick<
     Session,
-    "isBusy" | "totalCostUsd" | "currentModel" | "sessionId" | "setModel" | "listModels" | "replace" | "currentPermissionMode" | "setPermissionMode"
+    | "isBusy"
+    | "totalCostUsd"
+    | "currentModel"
+    | "sessionId"
+    | "setModel"
+    | "listModels"
+    | "replace"
+    | "currentPermissionMode"
+    | "setPermissionMode"
+    | "send"
   >;
   readUsage: () => Promise<UsageSnapshot>;
   print: (text: string) => void;
@@ -48,6 +57,7 @@ export const HELP_TEXT = [
   "  /model           현재 모델과 쓸 수 있는 모델 목록",
   "  /model <ID>      모델 바꾸기 (예: /model claude-sonnet-5-5). 바꾼 뒤 첫 턴은 캐시가 새로 만들어져 비쌉니다",
   "  /clear           새 대화 시작",
+  "  /compact [지시]  대화를 요약해 압축 (예: /compact 테스트 결과 위주로). 자동 압축도 결과가 표시됩니다",
   "  /resume          이 프로젝트의 세션 목록(최신순)에서 골라 이동",
   "  /resume <ID>     그 세션으로 바로 이동 (종료할 때 세션 ID가 출력됩니다)",
   "  /help            이 도움말",
@@ -238,6 +248,14 @@ export async function runCommand(
       );
       return;
     }
+    case "compact":
+      // SDK가 /compact prompt를 압축으로 처리한다. 진행과 결과는 compact 이벤트로 화면에 표시된다.
+      if (session.isBusy) {
+        print(BUSY_MESSAGE);
+        return;
+      }
+      session.send(argument === "" ? "/compact" : `/compact ${argument}`);
+      return;
     case "model":
       if (argument === "") {
         print(await formatModelList(session));

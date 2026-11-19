@@ -1,4 +1,4 @@
-import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SDKResultMessage, SDKStatusMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { UiEvent } from "./types.js";
 
 const SUMMARY_MAX_LENGTH = 80;
@@ -73,6 +73,19 @@ function resultErrorMessage(message: SDKResultMessage): string | undefined {
   return message.errors.length > 0 ? message.errors.join("\n") : message.subtype;
 }
 
+const UNKNOWN_COMPACT_ERROR = "알 수 없는 오류";
+
+/** 압축 시작과 실패만 알린다. 성공은 compact_boundary가 토큰 수와 함께 알린다. */
+function compactStatusEvents(message: SDKStatusMessage): UiEvent[] {
+  if (message.status === "compacting") {
+    return [{ type: "compact_start" }];
+  }
+  if (message.compact_result === "failed") {
+    return [{ type: "compact_failed", message: message.compact_error ?? UNKNOWN_COMPACT_ERROR }];
+  }
+  return [];
+}
+
 /** 받는 중인 응답의 토큰 추정에 쓰는 글자 수. 정확한 값은 응답이 끝날 때 message_delta로 온다. */
 const ESTIMATED_CHARS_PER_TOKEN = 4;
 
@@ -112,6 +125,15 @@ export function createEventMapper(initialTotalUsd = 0): (message: SDKMessage) =>
   return (message) => {
     switch (message.type) {
       case "system": {
+        if (message.subtype === "status") {
+          return compactStatusEvents(message);
+        }
+        if (message.subtype === "compact_boundary") {
+          const { trigger, pre_tokens, post_tokens } = message.compact_metadata;
+          return [
+            { type: "compact_done", trigger, preTokens: pre_tokens, ...(post_tokens === undefined ? {} : { postTokens: post_tokens }) },
+          ];
+        }
         if (message.subtype !== "init" || hasStarted) {
           return [];
         }

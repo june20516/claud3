@@ -2,7 +2,7 @@ import { Box, Static, Text, useStdout } from "ink";
 import { useEffect, useMemo, useReducer } from "react";
 import { formatDiffSummary, formatToolDiff } from "../../diffView.js";
 import { renderMarkdownLine } from "../../markdown.js";
-import { HISTORY_HEADER } from "../plain.js";
+import { COMPACTING_LABEL, HISTORY_HEADER, formatTokenCount } from "../plain.js";
 import { columnsOf } from "./terminalSize.js";
 import type {
   NoticeItem,
@@ -100,16 +100,8 @@ const WAITING_LABEL = "처리 중…";
 // Claude Code의 대기 표시처럼 따뜻한 주황으로 대화와 구분한다.
 const WAITING_COLOR = "#d7875f";
 
-/** 1000 미만은 그대로, 10만 미만은 소수 한 자리 k, 그 이상은 k. */
-export function formatTokenCount(count: number): string {
-  if (count < 1_000) {
-    return String(count);
-  }
-  return count < 100_000 ? `${(count / 1_000).toFixed(1)}k` : `${Math.round(count / 1_000)}k`;
-}
-
 /**
- * 응답을 기다리는 동안의 한 줄: 도는 기호와 "처리 중"(실행 중 도구가 있으면 도구), 경과 시간, 보낸·받은 토큰.
+ * 응답을 기다리는 동안의 한 줄: 도는 기호와 "처리 중"(압축 중이면 압축, 실행 중 도구가 있으면 도구), 경과 시간, 보낸·받은 토큰.
  * 기호와 경과 시간을 갱신하려고 스스로 주기적으로 다시 그린다.
  */
 function WaitingLine({ turn, running }: { turn: TurnProgress; running: readonly RunningTool[] }) {
@@ -123,7 +115,8 @@ function WaitingLine({ turn, running }: { turn: TurnProgress; running: readonly 
   const spinner = SPINNER_FRAMES[Math.floor(elapsedMs / SPINNER_INTERVAL_MS) % SPINNER_FRAMES.length];
   const [tool] = running;
   const others = running.length > 1 ? ` 외 ${running.length - 1}개` : "";
-  const label = tool === undefined ? WAITING_LABEL : `${tool.name}(${tool.summary}) 실행 중…${others}`;
+  const idleLabel = turn.compacting === true ? COMPACTING_LABEL : WAITING_LABEL;
+  const label = tool === undefined ? idleLabel : `${tool.name}(${tool.summary}) 실행 중…${others}`;
   const details =
     `${Math.floor(elapsedMs / 1_000)}초 · ↑ ${formatTokenCount(turn.inputTokens)} · ` +
     `↓ ${formatTokenCount(turn.outputTokens)} 토큰 · Esc 중단`;

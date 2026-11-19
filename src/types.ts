@@ -11,6 +11,11 @@ export type UiEvent =
   | { type: "tool_end"; toolUseId: string; isError: boolean; summary: string }
   | { type: "turn_result"; costUsd: number; totalCostUsd: number; isError: boolean; errorMessage?: string }
   | { type: "permission_mode"; mode: PermissionMode }
+  /** 대화 압축 시작(/compact 또는 자동). */
+  | { type: "compact_start" }
+  /** 대화 압축 완료. postTokens는 SDK가 알려줄 때만 있다. */
+  | { type: "compact_done"; trigger: "manual" | "auto"; preTokens: number; postTokens?: number }
+  | { type: "compact_failed"; message: string }
   | { type: "error"; message: string }
   | { type: "session_closed"; sessionId?: string; totalCostUsd: number };
 

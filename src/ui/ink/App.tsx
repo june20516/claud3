@@ -148,7 +148,10 @@ export class InkUiStore {
   }
 
   applyEvent(event: UiEvent): void {
-    let transcript = reduceTranscript(this.snapshot.transcript, event);
+    // /compact 명령은 prompt처럼 턴을 시작하지 않고 보내므로 압축 시작으로 대기 표시를 연다.
+    const before =
+      event.type === "compact_start" ? startTurn(this.snapshot.transcript, Date.now()) : this.snapshot.transcript;
+    let transcript = reduceTranscript(before, event);
     // plain 화면처럼 연결될 때마다 머리줄을 대화 흐름에 남긴다.
     if (event.type === "session_start" && transcript.header !== undefined) {
       transcript = addNotice(transcript, "dim", transcript.header);
