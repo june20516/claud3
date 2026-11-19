@@ -32,6 +32,29 @@ const PICK_PROMPT = "번호 › ";
 const PLAN_QUESTION = "\n계획을 승인할까요? [y]승인 [e]승인+편집 자동 허용 [n]계속 계획 › ";
 export const HISTORY_HEADER = "── 이전 대화 ──";
 export const CREDIT_HINT = "프로모션 크레딧이 소진되었거나 만료되었을 수 있습니다 (Console › Billing 확인)";
+export const COMPACTING_LABEL = "대화 압축 중…";
+
+/** 1000 미만은 그대로, 10만 미만은 소수 한 자리 k, 그 이상은 k. */
+export function formatTokenCount(count: number): string {
+  if (count < 1_000) {
+    return String(count);
+  }
+  return count < 100_000 ? `${(count / 1_000).toFixed(1)}k` : `${Math.round(count / 1_000)}k`;
+}
+
+/** 압축 완료 줄. 압축 후 토큰을 모르면 압축 전만 보인다. */
+export function formatCompactDone(event: Extract<UiEvent, { type: "compact_done" }>): string {
+  const trigger = event.trigger === "manual" ? "수동" : "자동";
+  const tokens =
+    event.postTokens === undefined
+      ? `압축 전 ${formatTokenCount(event.preTokens)}`
+      : `${formatTokenCount(event.preTokens)} → ${formatTokenCount(event.postTokens)}`;
+  return `대화를 압축했습니다 (${trigger} · ${tokens} 토큰)`;
+}
+
+export function formatCompactFailed(message: string): string {
+  return `대화 압축 실패: ${message}`;
+}
 
 export interface PlainUiIo {
   input: NodeJS.ReadableStream;
@@ -176,6 +199,12 @@ export function formatEvent(event: UiEvent, { width }: FormatEventOptions = {}):
     }
     case "permission_mode":
       return `\n${styleText("dim", `권한 모드: ${describePermissionMode(event.mode)}`)}\n`;
+    case "compact_start":
+      return `\n${styleText("dim", COMPACTING_LABEL)}\n`;
+    case "compact_done":
+      return `${formatCompactDone(event)}\n`;
+    case "compact_failed":
+      return `${styleText("red", formatCompactFailed(event.message))}\n`;
     case "error":
       return `\n${styleText("red", `오류: ${event.message}`)}\n`;
     case "session_closed": {

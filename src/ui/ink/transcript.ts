@@ -2,7 +2,7 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { renderMarkdownLine } from "../../markdown.js";
 import { describePermissionMode } from "../../permissionModes.js";
 import type { UiEvent } from "../../types.js";
-import { CREDIT_HINT } from "../plain.js";
+import { CREDIT_HINT, formatCompactDone, formatCompactFailed } from "../plain.js";
 
 export type NoticeTone = "info" | "error" | "dim";
 
@@ -48,6 +48,8 @@ export interface TurnProgress {
   inputTokens: number;
   /** 이번 턴에 받은 토큰(받는 중이면 추정). */
   outputTokens: number;
+  /** 대화를 압축하는 중인지. */
+  compacting?: boolean;
 }
 
 export interface TranscriptState {
@@ -155,6 +157,10 @@ export function startTurn(state: TranscriptState, startedAt: number): Transcript
   return { ...state, turn: { startedAt, inputTokens: 0, outputTokens: 0 } };
 }
 
+function withoutCompacting(state: TranscriptState): TranscriptState {
+  return state.turn === undefined ? state : { ...state, turn: { ...state.turn, compacting: false } };
+}
+
 export function addNotice(state: TranscriptState, tone: NoticeTone, text: string): TranscriptState {
   return appendNotice(commitStreaming(state), tone, text);
 }
@@ -226,6 +232,12 @@ export function reduceTranscript(state: TranscriptState, event: UiEvent): Transc
       }
       return appendNotice(next, "dim", `── ${usd(event.costUsd)} · 누적 ${usd(event.totalCostUsd)}`);
     }
+    case "compact_start":
+      return committed.turn === undefined ? committed : { ...committed, turn: { ...committed.turn, compacting: true } };
+    case "compact_done":
+      return appendNotice(withoutCompacting(committed), "info", formatCompactDone(event));
+    case "compact_failed":
+      return appendNotice(withoutCompacting(committed), "error", formatCompactFailed(event.message));
     case "permission_mode":
       return appendNotice(
         { ...committed, permissionMode: event.mode },

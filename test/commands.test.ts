@@ -30,6 +30,7 @@ function createContext(overrides: Partial<CommandContext["session"]> = {}) {
     replace: vi.fn(async (_resume?: string) => {}),
     currentPermissionMode: "default" as PermissionMode | undefined,
     setPermissionMode: vi.fn(async (_mode: PermissionMode) => {}),
+    send: vi.fn((_text: string) => {}),
     ...overrides,
   } satisfies CommandContext["session"];
   const context: CommandContext = {
@@ -382,5 +383,39 @@ describe("/persona-create", () => {
     expect(name).toBe("rapi");
     expect(io.ask).toBe(askQuestions);
     expect(io.signal).toBe(controller.signal);
+  });
+});
+
+describe("/compact", () => {
+  it("/compact는 command로 판정하고 지시를 인자로 받는다", () => {
+    expect(parseInput("/compact")).toEqual({ kind: "command", name: "compact", argument: "" });
+    expect(parseInput("/compact 테스트 결과 위주로")).toEqual({
+      kind: "command",
+      name: "compact",
+      argument: "테스트 결과 위주로",
+    });
+  });
+
+  it("인자 없으면 /compact를 그대로 보낸다", async () => {
+    const { context, session } = createContext();
+    await runCommand(command("compact"), context);
+    expect(session.send).toHaveBeenCalledWith("/compact");
+  });
+
+  it("지시가 있으면 /compact 뒤에 붙여 보낸다", async () => {
+    const { context, session } = createContext();
+    await runCommand(command("compact", "테스트 결과 위주로"), context);
+    expect(session.send).toHaveBeenCalledWith("/compact 테스트 결과 위주로");
+  });
+
+  it("턴 진행 중이면 보내지 않고 안내한다", async () => {
+    const { context, session, printed } = createContext({ isBusy: true });
+    await runCommand(command("compact"), context);
+    expect(session.send).not.toHaveBeenCalled();
+    expect(printed).toEqual(["턴이 끝난 뒤 다시 입력해 주세요"]);
+  });
+
+  it("도움말에 /compact가 있다", () => {
+    expect(HELP_TEXT).toContain("/compact");
   });
 });

@@ -279,3 +279,34 @@ describe("턴 진행 표시", () => {
     }
   });
 });
+
+describe("compact", () => {
+  it("compact_start는 진행 중인 턴을 압축 중으로 표시한다", () => {
+    const state = reduceTranscript(startTurn(initialTranscript, 0), { type: "compact_start" });
+    expect(state.turn?.compacting).toBe(true);
+  });
+
+  it("턴이 없으면 compact_start는 턴을 만들지 않는다", () => {
+    expect(reduceTranscript(initialTranscript, { type: "compact_start" }).turn).toBeUndefined();
+  });
+
+  it("compact_done은 압축 중 표시를 끄고 결과 줄을 남긴다", () => {
+    const state = reduceAll(
+      [{ type: "compact_start" }, { type: "compact_done", trigger: "manual", preTokens: 152_300, postTokens: 18_100 }],
+      startTurn(initialTranscript, 0),
+    );
+    expect(state.turn?.compacting).toBe(false);
+    expect(state.done).toEqual([
+      { kind: "notice", id: 0, tone: "info", text: "대화를 압축했습니다 (수동 · 152k → 18.1k 토큰)" },
+    ]);
+  });
+
+  it("compact_failed는 압축 중 표시를 끄고 오류 줄을 남긴다", () => {
+    const state = reduceAll(
+      [{ type: "compact_start" }, { type: "compact_failed", message: "too few messages" }],
+      startTurn(initialTranscript, 0),
+    );
+    expect(state.turn?.compacting).toBe(false);
+    expect(state.done).toEqual([{ kind: "notice", id: 0, tone: "error", text: "대화 압축 실패: too few messages" }]);
+  });
+});

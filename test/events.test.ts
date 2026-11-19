@@ -200,3 +200,47 @@ describe("createEventMapper", () => {
     expect(events[1]).toMatchObject({ isError: true, errorMessage: "error_max_turns" });
   });
 });
+
+describe("compact 이벤트", () => {
+  const status = (extra: Record<string, unknown>) => sdkMessage({ type: "system", subtype: "status", ...extra });
+
+  it("status compacting → compact_start", () => {
+    expect(mapAll([status({ status: "compacting" })])).toEqual([{ type: "compact_start" }]);
+  });
+
+  it("compact_boundary → compact_done(trigger, 전·후 토큰)", () => {
+    const boundary = sdkMessage({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 152_300, post_tokens: 18_100 },
+    });
+    expect(mapAll([boundary])).toEqual([
+      { type: "compact_done", trigger: "manual", preTokens: 152_300, postTokens: 18_100 },
+    ]);
+  });
+
+  it("post_tokens가 없으면 compact_done에 postTokens를 넣지 않는다", () => {
+    const boundary = sdkMessage({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 190_000 },
+    });
+    expect(mapAll([boundary])).toEqual([{ type: "compact_done", trigger: "auto", preTokens: 190_000 }]);
+  });
+
+  it("compact_result failed → compact_failed(오류 문구)", () => {
+    expect(mapAll([status({ status: null, compact_result: "failed", compact_error: "too few messages" })])).toEqual([
+      { type: "compact_failed", message: "too few messages" },
+    ]);
+  });
+
+  it("오류 문구 없이 실패하면 기본 문구", () => {
+    expect(mapAll([status({ status: null, compact_result: "failed" })])).toEqual([
+      { type: "compact_failed", message: "알 수 없는 오류" },
+    ]);
+  });
+
+  it("성공 결과나 그 밖의 status는 이벤트를 내지 않는다(완료는 compact_boundary로 알린다)", () => {
+    expect(mapAll([status({ status: null, compact_result: "success" }), status({ status: "requesting" })])).toEqual([]);
+  });
+});

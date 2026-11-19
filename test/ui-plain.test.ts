@@ -905,3 +905,26 @@ describe("createPlainUi 계획 질문", () => {
     }
   });
 });
+
+describe("formatEvent compact", () => {
+  it("compact_start는 압축 중 한 줄", () => {
+    expect(stripVTControlCharacters(formatEvent({ type: "compact_start" }))).toBe("\n대화 압축 중…\n");
+  });
+
+  it("자동 압축은 '자동', 압축 후 토큰이 없으면 압축 전만 보인다", () => {
+    expect(stripVTControlCharacters(formatEvent({ type: "compact_done", trigger: "auto", preTokens: 190_000 }))).toBe(
+      "대화를 압축했습니다 (자동 · 압축 전 190k 토큰)\n",
+    );
+  });
+
+  it("수동 압축은 전·후 토큰을 보인다", () => {
+    expect(
+      stripVTControlCharacters(formatEvent({ type: "compact_done", trigger: "manual", preTokens: 900, postTokens: 120 })),
+    ).toBe("대화를 압축했습니다 (수동 · 900 → 120 토큰)\n");
+  });
+
+  it("compact_failed는 오류 줄", () => {
+    const text = formatEvent({ type: "compact_failed", message: "too few messages" });
+    expect(stripVTControlCharacters(text)).toBe("대화 압축 실패: too few messages\n");
+  });
+});
