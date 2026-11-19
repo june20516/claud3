@@ -1,10 +1,18 @@
+import type { MoodEvent, MoodReason } from "../mood.js";
 import {
   FEELING_MAX,
   MEMORY_LIMIT,
   MEMORY_SESSION_LIMIT,
+  RECALL_COOLDOWN_TURNS,
+  RECALL_DELTAS,
+  RECALL_MAX,
+  RECALL_MIN_CHARS,
+  RECALL_SIMILARITY,
   SESSION_STALE_DAYS,
+  STARTUP_MEMORIES,
   SUMMARY_MAX,
 } from "../tuning.js";
+import { bigramSimilarity, normalizePrompt } from "../turnEvents.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -170,4 +178,104 @@ export function mergeMemoryFiles(onDisk: MemoryFile, mine: MemoryFile): MemoryFi
     }
   }
   return { version: 1, experiences: pruneExperiences([...experiences.values()]), sessions: [...sessions.values()] };
+}
+
+export interface StartupMemories {
+  memories: Experience[];
+  /** 첫 대화에서 먼저 언급해도 되는 기억. 가장 최근 세션의 중요도 3 중 가장 최근 것. */
+  lead?: Experience;
+}
+
+function latestFirst(a: Experience, b: Experience): number {
+  return Date.parse(b.at) - Date.parse(a.at);
+}
+
+/** 중요도 내림차순 → 최근 순 STARTUP_MEMORIES개와, 가장 최근 세션의 중요도 3 기억(lead). */
+export function selectStartupMemories(experiences: readonly Experience[]): StartupMemories {
+  const memories = [...experiences]
+    .sort((a, b) => b.importance - a.importance || latestFirst(a, b))
+    .slice(0, STARTUP_MEMORIES);
+  const latestSessionId = [...experiences].sort(latestFirst)[0]?.sessionId;
+  const lead = [...experiences]
+    .sort(latestFirst)
+    .find((item) => item.sessionId === latestSessionId && item.importance === 3);
+  return lead === undefined ? { memories } : { memories, lead };
+}
+
+export interface RecallInput {
+  prompt: string;
+  experiences: readonly Experience[];
+  excludeIds: ReadonlySet<string>;
+  /** 경험 id → 마지막으로 떠올린 턴 번호. */
+  lastRecalledTurn: ReadonlyMap<string, number>;
+  turn: number;
+}
+
+/**
+ * 입력과 관련 있는 기억을 유사도 순으로 RECALL_MAX개 고른다.
+ * 정규화(행동 줄 제거 포함)한 입력이 RECALL_MIN_CHARS보다 짧으면 고르지 않는다.
+ */
+export function recallMemories(input: RecallInput): Experience[] {
+  const prompt = normalizePrompt(input.prompt);
+  if ([...prompt].length < RECALL_MIN_CHARS) {
+    return [];
+  }
+  const isCoolingDown = (id: string): boolean => {
+    const last = input.lastRecalledTurn.get(id);
+    return last !== undefined && input.turn - last < RECALL_COOLDOWN_TURNS;
+  };
+  return input.experiences
+    .filter((item) => !input.excludeIds.has(item.id) && !isCoolingDown(item.id))
+    .map((item) => ({ item, similarity: bigramSimilarity(prompt, normalizePrompt(item.summary)) }))
+    .filter(({ similarity }) => similarity >= RECALL_SIMILARITY)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, RECALL_MAX)
+    .map(({ item }) => item);
+}
+
+/** 기록할 때의 기분 변화 방향(부호)에 중요도별 크기를 곱한다. 두 축 모두 0이면 이벤트 없음. */
+export function recallEvent(experience: Experience): MoodEvent | undefined {
+  const size = RECALL_DELTAS[experience.importance];
+  const stress = Math.sign(experience.moodDelta.stress) * size;
+  const dopamine = Math.sign(experience.moodDelta.dopamine) * size;
+  if (stress === 0 && dopamine === 0) {
+    return undefined;
+  }
+  return { kind: "recall", summary: experience.summary, stress, dopamine };
+}
+
+/** 런타임이 메모리에 두는 기분 표시점(극단 진입·탈출, 부호 전환). */
+export interface MoodMarker {
+  at: string;
+  text: string;
+}
+
+export interface SegmentMood {
+  moodReasons: string[];
+  moodDelta: { stress: number; dopamine: number };
+  /** 구간 시간대의 표시점. 기록 프롬프트에서 "강한 후보"가 된다. */
+  strongHints: string[];
+}
+
+/** from < at ≤ to 인 이유와 표시점만 모은다. 이유 문구는 중복 없이 순서대로, 변화량은 합계를 반올림한다. */
+export function summarizeSegmentMood(
+  reasons: readonly MoodReason[],
+  markers: readonly MoodMarker[],
+  from: string,
+  to: string,
+): SegmentMood {
+  const start = Date.parse(from);
+  const end = Date.parse(to);
+  const inRange = (at: string): boolean => {
+    const time = Date.parse(at);
+    return time > start && time <= end;
+  };
+  const picked = reasons.filter((reason) => inRange(reason.at));
+  const sum = (key: "stress" | "dopamine"): number =>
+    Math.round(picked.reduce((total, reason) => total + reason[key], 0));
+  return {
+    moodReasons: [...new Set(picked.map((reason) => reason.text))],
+    moodDelta: { stress: sum("stress"), dopamine: sum("dopamine") },
+    strongHints: markers.filter((marker) => inRange(marker.at)).map((marker) => marker.text),
+  };
 }

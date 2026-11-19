@@ -62,8 +62,8 @@ export const MEMORY_LIMIT = 300;
 export const MEMORY_SESSION_LIMIT = 20;
 export const RECORD_EVERY_TURNS = 10;
 export const STARTUP_MEMORIES = 6;
-/** 회상 기준 bigram 유사도. 써 보며 조정한다. */
-export const RECALL_SIMILARITY = 0.35;
+/** 회상 기준 bigram Jaccard 유사도. 짧은 입력과 긴 요약을 비교해 값이 낮게 나오므로 0.2(측정: 관련 0.29, 무관 0~0.02). 써 보며 조정한다. */
+export const RECALL_SIMILARITY = 0.2;
 export const RECALL_MAX = 2;
 export const RECALL_COOLDOWN_TURNS = 10;
 /** 정규화한 입력이 이보다 짧으면 회상하지 않는다(짧은 글자의 우연한 일치 방지). */
