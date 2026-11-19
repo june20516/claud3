@@ -163,6 +163,7 @@ export function trimSessions(sessions: readonly TrackedSession[], now: Date): Tr
  * 다른 프로세스가 그사이 쓴 파일(onDisk)과 내 상태(mine)를 합친다.
  * 경험은 id 합집합(같은 id는 mine) 후 pruneExperiences.
  * 세션은 sessionId 합집합이고, 양쪽에 있으면 recordedUntil이 늦은 쪽 항목 전체를 쓴다(같으면 mine).
+ * 합집합이라 파일이 끝없이 커지지 않도록 세션은 최근 lastSeenAt 순 MEMORY_SESSION_LIMIT개만 남긴다.
  * 커서 uuid만으로는 어느 쪽이 더 뒤인지 알 수 없어서 recordedUntil로 판단한다.
  */
 export function mergeMemoryFiles(onDisk: MemoryFile, mine: MemoryFile): MemoryFile {
@@ -177,7 +178,10 @@ export function mergeMemoryFiles(onDisk: MemoryFile, mine: MemoryFile): MemoryFi
       sessions.set(item.sessionId, item);
     }
   }
-  return { version: 1, experiences: pruneExperiences([...experiences.values()]), sessions: [...sessions.values()] };
+  const recentSessions = [...sessions.values()]
+    .sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))
+    .slice(0, MEMORY_SESSION_LIMIT);
+  return { version: 1, experiences: pruneExperiences([...experiences.values()]), sessions: recentSessions };
 }
 
 export interface StartupMemories {

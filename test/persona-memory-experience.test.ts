@@ -138,6 +138,14 @@ describe("mergeMemoryFiles", () => {
     expect(mergeMemoryFiles(disk, mine).sessions[0]?.cursor).toBe("later");
   });
 
+  it("합친 세션도 최근 lastSeenAt 순 20개까지", () => {
+    const disk = file([], Array.from({ length: 15 }, (_, index) => session({ sessionId: `d${index}`, lastSeenAt: daysAgo(index + 10) })));
+    const mine = file([], Array.from({ length: 10 }, (_, index) => session({ sessionId: `m${index}`, lastSeenAt: daysAgo(index) })));
+    const merged = mergeMemoryFiles(disk, mine);
+    expect(merged.sessions).toHaveLength(20);
+    expect(merged.sessions.some((item) => item.sessionId === "d14")).toBe(false);
+  });
+
   it("한쪽에만 있는 세션도 남긴다", () => {
     const merged = mergeMemoryFiles(file([], [session({ sessionId: "d" })]), file([], [session({ sessionId: "m" })]));
     expect(merged.sessions.map((item) => item.sessionId).sort()).toEqual(["d", "m"]);
