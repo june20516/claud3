@@ -123,6 +123,7 @@ export function createPersonaRuntime(deps: PersonaRuntimeDeps): PersonaRuntime {
       reasons: pendingReasons,
       flips: signFlips(before, state),
       actions,
+      recalled: [],
       now,
     });
     pendingReasons = [];

@@ -1,3 +1,4 @@
+import type { Experience, StartupMemories } from "./memory/experience.js";
 import type { Intensity, MoodReading, MoodReason, MoodState, SignFlip } from "./mood.js";
 import { DIRECTIONS } from "./profile.js";
 import type { Direction, DirectionStyle, PersonaProfile } from "./profile.js";
@@ -26,7 +27,34 @@ export interface TurnReport {
   reasons: MoodReason[];
   flips: SignFlip[];
   actions: { action: string; stress: number; dopamine: number }[];
+  /** 이번 입력으로 떠오른 기억. strong이면 먼저 꺼내도 된다는 문구를 붙인다. */
+  recalled: { experience: Experience; strong: boolean }[];
   now: Date;
+}
+
+/** 기억 날짜. 로컬 시각 기준 "M/D"(앞 0 없음). */
+export function formatMemoryDate(at: string): string {
+  const date = new Date(at);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/** 시작 기억이 있을 때만 "## 기억" 단락(앞 빈 줄 포함). 없으면 빈 목록이라 append가 그대로다. */
+function memoryLines(startup: StartupMemories | undefined): string[] {
+  if (startup === undefined || startup.memories.length === 0) {
+    return [];
+  }
+  const lines = [
+    "",
+    "## 기억",
+    "사용자와 함께한 일 중 기억나는 것. 대화에 자연스러울 때만 꺼내고, 억지로 언급하지 않는다.",
+    ...startup.memories.map((item) => `- ${formatMemoryDate(item.at)} ${item.summary} (${item.feeling})`),
+  ];
+  if (startup.lead !== undefined) {
+    lines.push(
+      `- 첫 대화에서 이 일을 먼저 언급해도 된다(한 번만): ${formatMemoryDate(startup.lead.at)} ${startup.lead.summary}`,
+    );
+  }
+  return lines;
 }
 
 /** 반올림한 정수에 부호를 붙인다. 음수는 U+2212 기호, 0은 부호 없이. */
@@ -48,7 +76,7 @@ function styleLines(label: string, style: DirectionStyle): string[] {
 }
 
 /** 세션 동안 바뀌지 않는 인격 소개와 규칙. 시스템 프롬프트 끝에 한 번 붙는다. */
-export function buildSystemAppend(profile: PersonaProfile): string {
+export function buildSystemAppend(profile: PersonaProfile, startup?: StartupMemories): string {
   const name = profile.displayName;
   const speech = profile.speechLevel === "polite" ? "존댓말" : "반말";
   const directionLines = [
@@ -79,6 +107,7 @@ export function buildSystemAppend(profile: PersonaProfile): string {
     "그 상태와 위 성향에 맞는 말투와 행동을 보인다. 극단 상태에서는 인격에 맞다면 일을 거부하거나,",
     "대충 하거나, 침묵하거나, 딴소리를 해도 된다. 상태가 풀리면 다시 일한다.",
     "사용자도 줄 전체를 괄호로 쓴 행동(예: `(츄르를 준다)`)을 할 수 있고, 그 효과는 상태 블록에 적힌다. 그 행동에 캐릭터답게 반응한다.",
+    ...memoryLines(startup),
     "",
     "## 출력 규칙",
     "- 행동 묘사는 따로 한 줄에 `(...)`로 쓴다. 예: `(키보드에서 손을 떼고 한숨을 쉰다)`",
@@ -130,6 +159,12 @@ export function buildTurnContext(profile: PersonaProfile, report: TurnReport): s
   }
   for (const action of report.actions) {
     lines.push(`사용자 행동: ${action.action} → stress ${signed(action.stress)}, dopamine ${signed(action.dopamine)}.`);
+  }
+  for (const { experience, strong } of report.recalled) {
+    lines.push(`떠오른 기억: ${formatMemoryDate(experience.at)} ${experience.summary}`);
+    if (strong) {
+      lines.push("강하게 떠오름 — 하던 얘기를 멈추고 먼저 꺼내도 된다.");
+    }
   }
   return lines.join("\n");
 }
