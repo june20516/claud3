@@ -61,17 +61,17 @@
 
 이 task의 스크립트는 버릴 코드다. 저장소 밖(`/tmp/claud3-memory-probe/`)에 `.mts`로 두고, SDK·`src/` 모듈은 worktree의 절대 경로로 import한다(`tsx`로 실행). Haiku(`claude-haiku-5-5`)로 짧게 확인하고, 끝나면 디렉터리를 지운다.
 
-- [ ] **Step 1: 진행 중 읽기 확인** — 스트리밍 입력 `query()`로 두 턴을 보내고, 두 번째 `result` 직후(같은 프로세스, query를 닫기 전) `getSessionMessages(sessionId)`가 두 번째 턴의 사용자 입력·응답까지 돌려주는지 본다. 메시지 객체에 타입 밖 필드(`timestamp`, `isCompactSummary` 등)가 실제로 있는지도 적는다.
-- [ ] **Step 2: compact 후 확인** — 세 턴 뒤 `/compact`를 보내고 `result` 후 `getSessionMessages`를 다시 읽는다. 압축 전 메시지 uuid들이 남아 있는지, compact 요약 메시지가 어떻게 표시되는지(`isCompactSummary`) 적는다.
-- [ ] **Step 3: 훅 확인** — `hooks`에 `PreCompact`·`SessionEnd` 콜백을 넣고 `/compact`, `query.close()`에서 각각 불리는지, 입력의 `session_id`·`cwd`·`reason`을 적는다. `/clear`를 prompt로 보냈을 때 `SessionEnd`가 불리는지도 본다.
-- [ ] **Step 4: 결과 기록** — `docs/suberpowers/notes/persona-memory-probe.md`에 세 확인의 관찰(명령, 메시지 개수, uuid 존재 여부, 훅 호출 여부, 비용)을 적는다.
-- [ ] **Step 5: spec 정정** — 확인 결과로 spec을 고친다.
+- [x] **Step 1: 진행 중 읽기 확인** — 스트리밍 입력 `query()`로 두 턴을 보내고, 두 번째 `result` 직후(같은 프로세스, query를 닫기 전) `getSessionMessages(sessionId)`가 두 번째 턴의 사용자 입력·응답까지 돌려주는지 본다. 메시지 객체에 타입 밖 필드(`timestamp`, `isCompactSummary` 등)가 실제로 있는지도 적는다.
+- [x] **Step 2: compact 후 확인** — 세 턴 뒤 `/compact`를 보내고 `result` 후 `getSessionMessages`를 다시 읽는다. 압축 전 메시지 uuid들이 남아 있는지, compact 요약 메시지가 어떻게 표시되는지(`isCompactSummary`) 적는다.
+- [x] **Step 3: 훅 확인** — `hooks`에 `PreCompact`·`SessionEnd` 콜백을 넣고 `/compact`, `query.close()`에서 각각 불리는지, 입력의 `session_id`·`cwd`·`reason`을 적는다. `/clear`를 prompt로 보냈을 때 `SessionEnd`가 불리는지도 본다.
+- [x] **Step 4: 결과 기록** — `docs/suberpowers/notes/persona-memory-probe.md`에 세 확인의 관찰(명령, 메시지 개수, uuid 존재 여부, 훅 호출 여부, 비용)을 적는다.
+- [x] **Step 5: spec 정정** — 확인 결과로 spec을 고친다.
   - 5장의 분기 중 맞는 쪽으로 `PRECOMPACT_WAIT_MS`(0 또는 20,000)와 "커서를 못 찾을 때" 규칙을 확정해 4.2·4.3·3.2에 반영한다.
   - 3.1 `sessions` 항목에 `recordedUntil`(ISO, 등록 시각으로 시작, 기록 성공 때 기록 시각)을 더하고, `moodReasons`의 시간대를 "`recordedUntil` ~ 기록 시각"으로 바꾼다(`SessionMessage`에 시각 필드가 타입으로 보장되지 않음).
   - 4.4의 "강한 후보"를 "런타임이 기록한 기분 표시점(극단 진입·탈출, 부호 전환) 중 구간 시간대의 것"으로 고치고, 표시점은 메모리에만 최근 20개(`MOOD_MARKERS`)를 둔다고 적는다(따라잡기 기록에는 없음).
   - 4.2 5단계의 `maxTurns` 1을 3으로 고친다(기존 판단기와 같은 이유).
   - 결과가 접근 A를 깨면(Step 1 실패) 여기서 멈추고 사용자에게 보고한다.
-- [ ] **Step 6: Commit** — `git add docs && git commit -m "docs(persona): 기억 기록 SDK 확인 결과와 spec 정정"`
+- [x] **Step 6: Commit** — `git add docs && git commit -m "docs(persona): 기억 기록 SDK 확인 결과와 spec 정정"`
 
 ---
 
@@ -86,15 +86,15 @@
   - `tuning.ts`: `MEMORY_LIMIT = 300`, `MEMORY_SESSION_LIMIT = 20`, `RECORD_EVERY_TURNS = 10`, `STARTUP_MEMORIES = 6`, `RECALL_SIMILARITY = 0.35`, `RECALL_MAX = 2`, `RECALL_COOLDOWN_TURNS = 10`, `RECALL_MIN_CHARS = 4`, `RECALL_DELTAS: Readonly<Record<1 | 2 | 3, number>> = { 1: 3, 2: 5, 3: 8 }`, `RECORD_TIMEOUT_MS = 60_000`, `RECORD_BUDGET_USD = 0.05`, `RECORD_MAX_FAILURES = 3`, `PRECOMPACT_WAIT_MS`(Task 1 결과), `SESSION_STALE_DAYS = 30`, `MOOD_MARKERS = 20`, `SEGMENT_LIMITS = { userChars: 1_000, assistantChars: 400, totalChars: 24_000 } as const`, `RECENT_SUMMARIES_FOR_RECORD = 20`, `SUMMARY_MAX = 120`, `FEELING_MAX = 60`
   - `mood.ts`: `MoodEvent`에 `{ kind: "recall"; summary: string; stress: number; dopamine: number }` 추가. `stress`·`dopamine`은 민감도 적용 전 기본 변화량.
 
-- [ ] **Step 1: 실패하는 테스트 작성** (`test/persona-mood.test.ts`에 `describe("recall 이벤트")`)
+- [x] **Step 1: 실패하는 테스트 작성** (`test/persona-mood.test.ts`에 `describe("recall 이벤트")`)
   - 민감도 3(배율 1)·업무 시간 아님에서 `{ kind: "recall", summary: "테스트가 드디어 통과했다", stress: 0, dopamine: 5 }` 적용 → dopamine +5, stress 0(커플링으로 dopamine에 stress 기여 없음)
   - 민감도 stress 5(×2)에서 `stress: 3, dopamine: 0` → stress +6
   - 이유 문구: `recentReasons.at(-1)?.text === "기억: 테스트가 드디어 통과했다"`; summary가 20자를 넘으면 앞 20자 + `…` (`"기억: " + "가나다라마바사아자차카타파하가나다라마바" + "…"`)
   - `failureStreak`을 바꾸지 않는다
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-mood.test.ts` Expected: FAIL(`recall` 미정의로 타입·값 불일치)
-- [ ] **Step 3: 구현** — `tuning.ts`에 위 상수. `mood.ts`의 `eventDelta`에서 `recall`은 `event.stress`·`event.dopamine`에 민감도 배율(stress 양수면 요일 배율도)을 적용한다. `applyEvent`의 이유 문구는 `recall`이면 `기억: <summary 앞 20자>…`(20자 이하면 `…` 없이). `MoodEventKind`·`EVENT_LABELS` 타입은 `recall`을 `userAction`처럼 라벨 표에서 뺀다.
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 기억 수치와 recall 기분 이벤트"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-mood.test.ts` Expected: FAIL(`recall` 미정의로 타입·값 불일치)
+- [x] **Step 3: 구현** — `tuning.ts`에 위 상수. `mood.ts`의 `eventDelta`에서 `recall`은 `event.stress`·`event.dopamine`에 민감도 배율(stress 양수면 요일 배율도)을 적용한다. `applyEvent`의 이유 문구는 `recall`이면 `기억: <summary 앞 20자>…`(20자 이하면 `…` 없이). `MoodEventKind`·`EVENT_LABELS` 타입은 `recall`을 `userAction`처럼 라벨 표에서 뺀다.
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 기억 수치와 recall 기분 이벤트"`
 
 ---
 
@@ -129,15 +129,15 @@
   ```
   커서 uuid만으로는 앞뒤를 알 수 없어서 `recordedUntil`로 판단한다(이 이유를 JSDoc에 적는다).
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
   - `parseMemoryFile`: 정상 파일 왕복, `version` 없음 → `undefined`, `experiences`가 배열 아님 → `undefined`, 중요도 4인 항목만 버림, `summary` 130자 → 120자, `feeling` 70자 → 60자, `cursor: null` 허용, 숫자가 아닌 `moodDelta` 항목 버림
   - `pruneExperiences`: 중요도 [1(오래됨), 1(최근), 3(가장 오래됨), 2] limit 2 → 3과 2만 남음; limit 이하면 그대로
   - `trimSessions`: `lastReadAt` 31일 전 → 빠짐, 29일 전 → 남음, `lastReadAt: null`이면 `lastSeenAt` 기준, 21개 → 최근 20개
   - `mergeMemoryFiles`: disk에만 있는 경험 유지, 같은 id는 mine, 같은 세션에서 `recordedUntil`이 늦은 쪽 커서 사용, 한쪽에만 있는 세션 유지
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-experience.test.ts` Expected: FAIL(모듈 없음)
-- [ ] **Step 3: 구현** — `profile.ts`의 `isRecord`·`isStringArray` 같은 도우미는 그 파일 것을 export해서 쓰거나 같은 방식으로 작성한다(`unknown`에서 좁힘).
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 기억 파일 타입·검증·합치기·정리"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-experience.test.ts` Expected: FAIL(모듈 없음)
+- [x] **Step 3: 구현** — `profile.ts`의 `isRecord`·`isStringArray` 같은 도우미는 그 파일 것을 export해서 쓰거나 같은 방식으로 작성한다(`unknown`에서 좁힘).
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 기억 파일 타입·검증·합치기·정리"`
 
 ---
 
@@ -168,15 +168,15 @@
   export function summarizeSegmentMood(reasons: readonly MoodReason[], markers: readonly MoodMarker[], from: string, to: string): SegmentMood;
   ```
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
   - `selectStartupMemories`: 중요도 3 두 개·2 다섯 개 → 3 두 개 + 2 중 최근 넷; 빈 목록 → `{ memories: [] }`, `lead` 없음; 최신 세션에 중요도 3이 있으면 `lead`, 최신 세션에 3이 없고 이전 세션에만 있으면 `lead` 없음
   - `recallMemories`: summary `"compact 명령 만들 때 main이 바뀌어 있었다"`, 입력 `"compact 명령 또 손봐야겠다"` → 회상됨; 무관한 입력 → `[]`; 입력 `"ㅇㅇ"`(Review Focus 1) → `[]`; 입력 `"(츄르를 준다)"`만 → `[]`; `excludeIds`에 든 것 제외; `lastRecalledTurn`이 `turn - 9`면 제외, `turn - 10`이면 허용; 후보 3개면 유사도 높은 2개
   - `recallEvent`: importance 2, `moodDelta { stress: -4, dopamine: 7 }` → `{ kind: "recall", summary, stress: -5, dopamine: 5 }`; `{ stress: 0, dopamine: 0 }` → `undefined`
   - `summarizeSegmentMood`: 범위 밖 이유 제외, 경계(`at === from`) 제외·(`at === to`) 포함, 같은 text 한 번만, 합계 반올림, 범위 안 표시점만 `strongHints`
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-experience.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현** — 위 signature대로.
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 기억 선택·회상·회상 이벤트"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-experience.test.ts` Expected: FAIL
+- [x] **Step 3: 구현** — 위 signature대로.
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 기억 선택·회상·회상 이벤트"`
 
 ---
 
@@ -198,17 +198,17 @@
   export async function saveMemories(name: string, file: MemoryFile, dir?: string): Promise<MemoryFile>;
   ```
 
-- [ ] **Step 1: 실패하는 테스트 작성** (임시 디렉터리 사용)
+- [x] **Step 1: 실패하는 테스트 작성** (임시 디렉터리 사용)
   - 없는 파일 → `emptyMemoryFile()`
   - 저장 후 읽기 왕복
   - 깨진 JSON → `.broken` 파일 생김, 빈 파일과 경고 문구
   - 다른 프로세스가 그사이 경험을 추가한 파일이 있을 때 `saveMemories` → 두 쪽 경험이 모두 들어간 결과를 돌려주고 디스크에도 그 내용
   - 저장 후 디렉터리에 `.tmp` 파일이 남지 않음
   - `test/persona-store.test.ts`: `listPersonas`가 `yuri.json`, `yuri.mood.json`, `yuri.memories.json`이 있을 때 `["yuri"]`만
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-store.test.ts test/persona-store.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현** — `listPersonas`는 `.memories.json`도 제외한다.
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 기억 파일 읽기·저장"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-store.test.ts test/persona-store.test.ts` Expected: FAIL
+- [x] **Step 3: 구현** — `listPersonas`는 `.memories.json`도 제외한다.
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 기억 파일 읽기·저장"`
 
 ---
 
@@ -236,7 +236,7 @@
   - 도구 성패: assistant의 `tool_use` id와 user 메시지의 `tool_result`(`is_error`)를 짝지어 `⏺ 이름 (성공)`/`(실패)`, 결과가 없으면 `(결과 없음)`.
   - 길이: 사용자 입력은 `userChars`, 응답은 `assistantChars`에서 자르고 `…`. 줄 합계가 `totalChars`를 넘으면 앞쪽 줄부터 버리고 맨 앞에 `(앞부분 생략)` 줄.
 
-- [ ] **Step 1: 실패하는 테스트 작성** — 가짜 `SessionMessage` 생성 도우미로:
+- [x] **Step 1: 실패하는 테스트 작성** — 가짜 `SessionMessage` 생성 도우미로:
   - 커서 `null` → 처음부터, 커서 uuid 다음부터, 커서가 마지막 메시지면 `undefined`
   - 커서를 못 찾음 → Task 1 규칙대로(예: 마지막 compact 요약 다음부터)
   - 서브에이전트(`parent_tool_use_id` 있음)·`is_meta`·compact 요약·`<command-` 기록 제외
@@ -245,10 +245,10 @@
   - `context`는 커서 이전 마지막 2쌍, 커서 `null`이면 `[]`
   - `userInputs`는 구간의 사용자 입력 수, 응답만 있으면 0
   - `lastUuid`는 마지막 메시지가 메타여도 그 uuid
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-segment.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현**
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과(기존 이전 대화 표시 테스트 포함)
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 기억 기록용 대화 구간"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-segment.test.ts` Expected: FAIL
+- [x] **Step 3: 구현**
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과(기존 이전 대화 표시 테스트 포함)
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 기억 기록용 대화 구간"`
 
 ---
 
@@ -271,14 +271,14 @@
   ```
   프롬프트에는 spec 4.4의 입력 전부와 4.5의 기준·중요도 표·"기본값은 0개" 지시를 그대로 옮긴다. 인격 소개는 `displayName`, `summary`, `relationship`, `speechExamples`, `catchphrases`. `feeling`은 그 인격의 말투로 쓰라고 지시한다. 사용자 호칭은 `relationship`에 맞춰 "사용자"로 통일해 서술한다.
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
   - 프롬프트에 인격 이름, 구간 줄, 맥락 줄(맥락이 있을 때만 "참고용" 표시와 함께), 최근 요약, 기분 이유, `strongHints`가 있으면 "강한 후보" 문구, 기준 문장 "기본값은 0개"가 들어 있음
   - `recentSummaries`가 비면 그 단락 없음
   - `parseRecordOutput`: `{ experiences: [] }` → `[]`; 4개 → 앞 유효 3개; `importance: 2.5`·`0`·`"3"` 항목 버림; 빈 `summary` 버림; 150자 summary → 120자(Review Focus 2); `null`·`{}`·`{ experiences: "x" }` → `undefined`
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-recordPrompt.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현**
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 기억 기록 프롬프트와 출력 해석"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-recordPrompt.test.ts` Expected: FAIL
+- [x] **Step 3: 구현**
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 기억 기록 프롬프트와 출력 해석"`
 
 ---
 
@@ -325,7 +325,7 @@
   - 경고: 위 실패들 중 첫 번째만 `onWarning("인격 기억을 기록하지 못했습니다: <원인>")`.
   - 대기열: 전체에서 한 번에 하나. 같은 세션 요청이 이미 대기 중이면 그 Promise를 돌려준다. 실행 중인 세션에 새 요청이 오면 끝난 뒤 한 번 더 돈다(Review Focus 3).
 
-- [ ] **Step 1: 실패하는 테스트 작성** — 가짜 `readMessages`·`model`·`save`(메모리 배열에 기록)·고정 `clock`으로:
+- [x] **Step 1: 실패하는 테스트 작성** — 가짜 `readMessages`·`model`·`save`(메모리 배열에 기록)·고정 `clock`으로:
   - 등록 후 `request` → 모델 1회, 경험 추가, 커서 이동, `save`·`onChange` 호출
   - 모델이 0개 → 경험 없음, 커서는 이동
   - 사용자 입력 없는 구간 → 모델 호출 없음, 커서 그대로
@@ -338,10 +338,10 @@
   - `catchUp` → 저장된 `cwd`로 `readMessages` 호출(Review Focus 5), 31일 지난 세션은 읽지 않고 목록에서 빠짐
   - 프롬프트에 `moodContext`의 범위 안 이유와 표시점이 들어감
   - `createRecordModel`: 가짜 `queryFn`이 받은 `options`에 `model: "claude-haiku-5-5"`, `tools: []`, `settingSources: []`, `persistSession: false`, `maxTurns: 3`, `maxBudgetUsd: 0.05`, `outputFormat.type === "json_schema"`
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-recorder.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현**
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 기억 기록기"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-memory-recorder.test.ts` Expected: FAIL
+- [x] **Step 3: 구현**
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 기억 기록기"`
 
 ---
 
@@ -363,15 +363,15 @@
     - lead: `- 첫 대화에서 이 일을 먼저 언급해도 된다(한 번만): <M/D> <summary>`
     - 회상: `떠오른 기억: <M/D> <summary>`, strong이면 바로 다음 줄 `강하게 떠오름 — 하던 얘기를 멈추고 먼저 꺼내도 된다.`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: 실패하는 테스트 작성**
   - 기억 없음 → 기존 스냅숏(또는 기존 기대 문자열)과 동일
   - 기억 2개 → 단락과 항목 형식; lead 있으면 lead 줄
   - `formatMemoryDate("2026-11-19T06:41:00.000Z")`가 `TZ`에 따라 바뀜을 고려해, 테스트는 로컬 시각으로 만든 `new Date(2026, 10, 19, 15, 41).toISOString()` → `"11/19"`
   - `buildTurnContext`: `recalled` 비면 줄 없음; 하나 → `떠오른 기억:` 줄; strong → 다음 줄 문구
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-prompt.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현**
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 시스템 append와 상태 블록에 기억"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-prompt.test.ts` Expected: FAIL
+- [x] **Step 3: 구현**
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 시스템 append와 상태 블록에 기억"`
 
 ---
 
@@ -403,7 +403,7 @@
   - 표시점: `onPrompt`·`onEvents`에서 상태가 바뀔 때 `readMood`의 세기가 `extreme`으로 들어가거나 나오면 `{ at, text: "극단 진입: <방향 라벨>" | "극단 탈출" }`, `signFlips`마다 `{ at, text: "<축> 부호 전환" }`을 최근 `MOOD_MARKERS`개 보관.
   - `systemAppend`는 `buildSystemAppend(profile, memory?.startup)`.
 
-- [ ] **Step 1: 실패하는 테스트 작성** — 가짜 `MemoryRecorder`(호출 기록)로:
+- [x] **Step 1: 실패하는 테스트 작성** — 가짜 `MemoryRecorder`(호출 기록)로:
   - `memory` 없으면 `hooks` 키가 지금과 같고(`PreCompact`·`SessionEnd` 없음) `systemAppend`도 같음
   - 처음 보는 `session_id` → `register(id, cwd)` 한 번, 같은 id 두 번째는 없음
   - 사용자 턴 10번(`UserPromptSubmit` → `Stop`) → `request` 1회; `UserPromptSubmit` 없이 온 `Stop`은 세지 않음
@@ -412,10 +412,10 @@
   - 회상: 관련 입력 → 상태 블록에 `떠오른 기억:`, 기분이 `recallEvent`만큼 변하고 이유에 `기억:`; source가 사용자 입력이 아니면 회상 없음; 같은 기억은 10턴 안에 다시 안 나옴; strong 문구는 한 번만
   - 기록기 `request`가 영원히 안 끝나도 `UserPromptSubmit` 훅은 끝남
   - `moodContext()`: 극단 진입·탈출, 부호 전환 표시점이 쌓이고 20개를 넘지 않음
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-runtime.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현**
-- [ ] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
-- [ ] **Step 5: Commit** — `git commit -m "feat(persona): 런타임에 기억 기록·회상 연결"`
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-runtime.test.ts` Expected: FAIL
+- [x] **Step 3: 구현**
+- [x] **Step 4: 통과 확인** — Run: `npm test && npm run typecheck` Expected: 모두 통과
+- [x] **Step 5: Commit** — `git commit -m "feat(persona): 런타임에 기억 기록·회상 연결"`
 
 ---
 
@@ -432,17 +432,17 @@
   - `openPersona`: `loadMemories`(경고는 `onWarning`) → `selectStartupMemories` → `createMemoryRecorder`(`save: (file) => saveMemories(name, file, dir)`, `model: createRecordModel(deps.queryFn, deps.env)`, `moodContext: () => runtime.moodContext()`, `onChange`로 회상 대상 갱신) → 런타임 → `void recorder.catchUp()`.
   - `main.ts`는 바꿀 것이 없으면 그대로 둔다(`openPersona`의 기존 deps로 충분). 필요하면 `readMessages`만 넘긴다.
 
-- [ ] **Step 1: 실패하는 테스트 작성** (임시 디렉터리, 가짜 `queryFn`·`readMessages`)
+- [x] **Step 1: 실패하는 테스트 작성** (임시 디렉터리, 가짜 `queryFn`·`readMessages`)
   - 기억 파일이 없으면 `systemAppend`에 `## 기억`이 없고 런타임 `hooks`에 `PreCompact`가 있음
   - 기억 파일이 있으면 `systemAppend`에 시작용 기억
   - 깨진 기억 파일 → `onWarning("기억 파일이 깨져 새로 시작합니다")`, 열기 성공
   - 따라잡기: 커서 뒤에 사용자 입력이 남은 세션이 있으면 열고 나서 가짜 `queryFn`이 한 번 불리고 파일에 경험과 새 커서가 저장됨; 남은 메시지가 없으면 호출 없음
-- [ ] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-bootstrap.test.ts` Expected: FAIL
-- [ ] **Step 3: 구현**
-- [ ] **Step 4: 문서**
+- [x] **Step 2: 실패 확인** — Run: `npx vitest run test/persona-bootstrap.test.ts` Expected: FAIL
+- [x] **Step 3: 구현**
+- [x] **Step 4: 문서**
   - `CLAUDE.md` 구조 표에 `src/persona/memory/*` 다섯 파일 행 추가, `runtime.ts`·`prompt.ts`·`bootstrap.ts`·`store.ts`·`sessionHistory.ts` 행에 바뀐 책임 한 구절씩
   - `README.md` 인격 섹션에 한 단락: 인격은 함께한 일을 `<이름>.memories.json`에 기억하고 다음 대화에서 꺼낸다, 내용은 화면에 보이지 않는다, 기록 한 번에 Haiku 비용이 든다
   - 이 plan의 체크박스 갱신
-- [ ] **Step 5: 통과 확인** — Run: `npm test && npm run typecheck && npm run build` Expected: 모두 통과
-- [ ] **Step 6: 실제 확인** — `npm run dev -- --persona yuri`로 열어 11턴 이상 대화한 뒤 종료하고, `~/.config/claud3/personas/yuri.memories.json`에 세션 항목과 커서가 생겼는지(경험은 0개일 수 있음) 확인한다. 다시 열었을 때 따라잡기가 남은 구간만 처리하는지 확인한다. 내용은 사용자에게 보여 주지 않고 형식만 확인한다.
-- [ ] **Step 7: Commit** — `git commit -m "feat(persona): 기억 시작 조립·따라잡기와 문서"`
+- [x] **Step 5: 통과 확인** — Run: `npm test && npm run typecheck && npm run build` Expected: 모두 통과
+- [x] **Step 6: 실제 확인** — `npm run dev -- --persona yuri`로 열어 11턴 이상 대화한 뒤 종료하고, `~/.config/claud3/personas/yuri.memories.json`에 세션 항목과 커서가 생겼는지(경험은 0개일 수 있음) 확인한다. 다시 열었을 때 따라잡기가 남은 구간만 처리하는지 확인한다. 내용은 사용자에게 보여 주지 않고 형식만 확인한다.
+- [x] **Step 7: Commit** — `git commit -m "feat(persona): 기억 시작 조립·따라잡기와 문서"`

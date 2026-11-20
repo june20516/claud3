@@ -224,6 +224,12 @@ describe("createMemoryRecorder", () => {
     expect(recorder.current().sessions.map((item) => item.sessionId)).toEqual(["s1"]);
   });
 
+  it("따라잡기는 정리할 세션이 없으면 파일을 쓰지 않는다", async () => {
+    const { recorder, deps } = setup();
+    await recorder.catchUp();
+    expect(deps.save).not.toHaveBeenCalled();
+  });
+
   it("프롬프트에 구간 시간대(등록 이후)의 기분 이유와 표시점을 넣는다", async () => {
     let prompt = "";
     let now = NOW;

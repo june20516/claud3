@@ -91,7 +91,8 @@
 | `MEMORY_SESSION_LIMIT` | 20 | 추적하는 세션 수 |
 | `RECORD_EVERY_TURNS` | 10 | 이 턴 수마다 기록 요청 |
 | `STARTUP_MEMORIES` | 6 | 시스템 append에 넣는 기억 수 |
-| `RECALL_SIMILARITY` | 0.35 | 회상 기준 bigram 유사도(써 보며 조정) |
+| `RECALL_SIMILARITY` | 0.2 | 회상 기준 bigram Jaccard 유사도. 짧은 입력과 긴 요약을 비교해 값이 낮게 나온다(측정: 관련 0.29, 무관 0~0.02). 써 보며 조정 |
+| `RECALL_MIN_CHARS` | 4 | 정규화한 입력이 이보다 짧으면 회상하지 않음 |
 | `RECALL_MAX` | 2 | 한 턴에 떠올리는 최대 개수 |
 | `RECALL_COOLDOWN_TURNS` | 10 | 같은 기억을 다시 떠올리지 않는 턴 수 |
 | `RECALL_DELTAS` | 1: 3, 2: 5, 3: 8 | 회상 이벤트 크기(중요도별) |

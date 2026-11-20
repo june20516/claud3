@@ -230,8 +230,10 @@ export function createMemoryRecorder(deps: MemoryRecorderDeps): MemoryRecorder {
     request,
     async catchUp() {
       const trimmed = trimSessions(file.sessions, deps.clock());
-      file = { ...file, sessions: trimmed };
-      await enqueue(() => commit((current) => current));
+      if (trimmed.length !== file.sessions.length) {
+        file = { ...file, sessions: trimmed };
+        await enqueue(() => commit((current) => current));
+      }
       await Promise.all(trimmed.map((item) => request(item.sessionId)));
     },
     current: () => file,

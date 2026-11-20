@@ -19,7 +19,7 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/session.ts` | `query()` 수명, 한 번에 한 턴씩 입력, 중단, 재연결, 모델 변경·목록, 세션 교체, 권한 위임, 권한 모드 반영·변경, plan 계획 승인, resume 시 이전 대화 불러오기(`history` 이벤트), AskUserQuestion 답 위임(`askUser`). 화면을 모른다 |
 | `src/userQuestions.ts` | AskUserQuestion 입력 검증, 답(번호·직접 입력) 해석, 질문·답 요약 문구 |
 | `src/sessionList.ts` | `listSessions`로 프로젝트 세션 목록(최신순, 제목·마지막 대화 시간) 읽기와 시간 문구 |
-| `src/sessionHistory.ts` | SDK 세션 기록 → 화면 줄(마지막 100줄) 변환과 `getSessionMessages` 읽기 |
+| `src/sessionHistory.ts` | SDK 세션 기록 → 화면 줄(마지막 100줄) 변환과 `getSessionMessages` 읽기. 메시지 거르기 함수(`isVisible`·`userText` 등)는 기억 구간 만들기와 함께 쓴다 |
 | `src/usageStore.ts` | `~/.config/claud3/usage.json`(`CLAUD3_CONFIG_DIR`로 변경)의 누적 비용·시작 잔액 읽기/쓰기 |
 | `src/workspaceInfo.ts` | 상태 줄의 현재 디렉터리(`~` 축약)와 git 브랜치 읽기 |
 | `src/userConfig.ts` | `~/.config/claud3/config.json`의 claud3 전용 설정(기본 권한 모드) 읽기와 우선순위 |
@@ -29,15 +29,20 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/inputHistory.ts` | 입력 기록 파일 읽기/저장 (화면 공용, 한 줄에 JSON 문자열 하나라 여러 줄 입력도 저장, 예전 형식 줄도 읽음) |
 | `src/persona/tuning.ts` | 인격 수치 상수(변화량·배율·반감기·경계값)와 칭찬·욕·테스트 명령·행동 줄 패턴 |
 | `src/persona/profile.ts` | `PersonaProfile`·`PersonaDraft` 타입, 인격 파일 검증(`unknown`에서 좁힘), 초안 필드 걸러내기 |
-| `src/persona/mood.ts` | 기분 상태 머신 (I/O 없음): 이벤트 적용(민감도·요일·커플링·업무 시간 상한), 감쇠, 방향·세기, 부호 전환 |
+| `src/persona/mood.ts` | 기분 상태 머신 (I/O 없음): 이벤트 적용(민감도·요일·커플링·업무 시간 상한, 기억 회상 `recall`), 감쇠, 방향·세기, 부호 전환 |
 | `src/persona/turnEvents.ts` | 입력 반복(bigram 유사도)·칭찬·욕, 도구 성공·실패·테스트 통과, 느린 턴 → 이벤트 (I/O 없음) |
 | `src/persona/signals.ts` | 시각·요일·업무 시간·쉰 시간, 메모리 여유율(darwin은 `sysctl kern.memorystatus_level`)·CPU 부하 → 이벤트 |
 | `src/persona/oneShot.ts` | 도구를 제한한 one-shot `query()`와 `structured_output`(없으면 결과 글의 JSON)·비용 읽기 |
 | `src/persona/actions.ts` | 행동 줄 `(…)` 추출(코드 블록 제외), 반응 찾기(인격 반응 → 기억 → Haiku 판단, 10초 시간 제한) |
-| `src/persona/prompt.ts` | 시스템 append(인격 소개·규칙)와 턴별 `[이름 상태]` 문구 (I/O 없음) |
-| `src/persona/store.ts` | `<configDir>/personas/`의 인격·기분 파일 읽기/쓰기, 깨진 기분 파일은 `.broken`으로 |
-| `src/persona/runtime.ts` | SDK hooks(`UserPromptSubmit`·`PostToolUse(Failure)`·`Stop`)로 기분 갱신·저장·주입, 직렬화, 예외 격리, 구독 |
-| `src/persona/bootstrap.ts` | `--persona` 이름으로 인격·기분을 읽어 런타임 생성, 실패 문구 |
+| `src/persona/prompt.ts` | 시스템 append(인격 소개·규칙, 시작 기억 `## 기억`)와 턴별 `[이름 상태]` 문구(떠오른 기억 포함) (I/O 없음) |
+| `src/persona/store.ts` | `<configDir>/personas/`의 인격·기분 파일 읽기/쓰기, 깨진 기분 파일은 `.broken`으로. 인격 목록에서 `.mood.json`·`.memories.json`은 뺀다 |
+| `src/persona/memory/experience.ts` | 기억 타입·검증, 합치기·개수 정리, 시작 기억 선택, 턴별 회상(bigram), 회상 이벤트, 구간 기분 요약 (I/O 없음) |
+| `src/persona/memory/segment.ts` | SDK 세션 기록 + 커서 → 기록할 대화 구간(도구는 이름·성패만, 길이 제한, 앞 구간 맥락) (I/O 없음) |
+| `src/persona/memory/recordPrompt.ts` | 기억 기록 Haiku 프롬프트(선정 기준·중요도), JSON schema, 출력 해석 (I/O 없음) |
+| `src/persona/memory/memoryStore.ts` | `<이름>.memories.json` 읽기·저장(저장 직전 디스크와 합치기), 깨진 파일은 `.broken`으로 |
+| `src/persona/memory/recorder.ts` | 세션 등록·커서, 기록 대기열(한 번에 하나, 같은 세션 합치기), Haiku 호출, 실패 3회 포기, 따라잡기. 경고는 한 번, 기억 내용은 화면에 내지 않는다 |
+| `src/persona/runtime.ts` | SDK hooks(`UserPromptSubmit`·`PostToolUse(Failure)`·`Stop`, 기억이 있으면 `PreCompact`·`SessionEnd`)로 기분 갱신·저장·주입, 직렬화, 예외 격리, 구독. 기억: 세션 등록, 10턴·압축 직전(최대 20초 대기)·`/clear`에 기록 요청(기분 대기열 밖), 회상, 기분 표시점 |
+| `src/persona/bootstrap.ts` | `--persona` 이름으로 인격·기분·기억을 읽어 기록기와 런타임 생성, 시작 따라잡기(백그라운드), 실패 문구 |
 | `src/persona/validateFile.ts` | `--validate-persona`: 인격 파일 검사(`validateProfile` + 파일 이름과 `name` 일치), 종료 코드 0·1·2와 stderr 줄 (API 키·SDK·네트워크 없음) |
 | `src/persona/create.ts` | `/persona-create` 흐름: 참고 자료 → 조사(WebSearch·WebFetch만, 설정 격리) → 설문 → 생성 → 확인·저장 |
 | `src/ui/runOptions.ts` | `UiRunOptions`(`startupCommand` 포함), `ChatUi` 타입(`prompter`·`asker`). 명령 출력(`print`)과 세션 고르기(`pickSession`)는 화면이 제공한다 |
