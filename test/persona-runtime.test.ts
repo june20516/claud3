@@ -5,8 +5,12 @@ import type { ReactionJudge } from "../src/persona/actions.js";
 import { initialMood } from "../src/persona/mood.js";
 import type { MoodState } from "../src/persona/mood.js";
 import type { PersonaProfile } from "../src/persona/profile.js";
+import { emptyMemoryFile } from "../src/persona/memory/experience.js";
+import type { Experience, StartupMemories } from "../src/persona/memory/experience.js";
+import type { MemoryRecorder } from "../src/persona/memory/recorder.js";
+import { buildSystemAppend } from "../src/persona/prompt.js";
 import { createPersonaRuntime } from "../src/persona/runtime.js";
-import type { PersonaRuntimeDeps } from "../src/persona/runtime.js";
+import type { PersonaMemoryDeps, PersonaRuntimeDeps } from "../src/persona/runtime.js";
 import type { SignalSources } from "../src/persona/signals.js";
 
 const PROFILE = JSON.parse(
@@ -171,5 +175,158 @@ describe("createPersonaRuntime", () => {
     await call(toolSuccess());
     const output = await call(prompt("다음"));
     expect(contextOf(output)).toContain("최근 원인: 도구 실패.");
+  });
+});
+
+describe("기억 연결", () => {
+  const compactMemory: Experience = {
+    id: "e1",
+    summary: "compact 명령 만들 때 main이 바뀌어 있었다",
+    feeling: "…다행이었어요.",
+    importance: 2,
+    at: START.toISOString(),
+    sessionId: "old",
+    moodReasons: ["테스트 통과"],
+    moodDelta: { stress: 0, dopamine: 6 },
+  };
+  const related = "compact 명령 또 손봐야겠다";
+
+  function fakeRecorder(overrides: Partial<MemoryRecorder> = {}): MemoryRecorder & {
+    register: ReturnType<typeof vi.fn>;
+    request: ReturnType<typeof vi.fn>;
+  } {
+    return {
+      register: vi.fn(),
+      request: vi.fn(async () => undefined),
+      catchUp: vi.fn(async () => undefined),
+      current: () => emptyMemoryFile(),
+      ...overrides,
+    } as MemoryRecorder & { register: ReturnType<typeof vi.fn>; request: ReturnType<typeof vi.fn> };
+  }
+
+  function withMemory(experiences: Experience[] = [compactMemory], recorder = fakeRecorder(), startup: StartupMemories = { memories: [] }) {
+    const memory: PersonaMemoryDeps = { recorder, startup, experiences: () => experiences };
+    return { ...setup({ memory }), recorder };
+  }
+
+  const preCompact = (): HookInput => ({ ...BASE, hook_event_name: "PreCompact", trigger: "manual", custom_instructions: null });
+  const sessionEnd = (): HookInput => ({ ...BASE, hook_event_name: "SessionEnd", reason: "clear" });
+
+  it("기억이 없으면 훅과 append가 지금과 같다", () => {
+    const { runtime } = setup();
+    expect(Object.keys(runtime.hooks).sort()).toEqual(["PostToolUse", "PostToolUseFailure", "Stop", "UserPromptSubmit"]);
+    expect(runtime.systemAppend).toBe(buildSystemAppend(PROFILE));
+  });
+
+  it("기억이 있으면 PreCompact·SessionEnd 훅과 시작 기억 append", () => {
+    const startup = { memories: [compactMemory] };
+    const { runtime } = withMemory([compactMemory], fakeRecorder(), startup);
+    expect(runtime.hooks.PreCompact).toBeDefined();
+    expect(runtime.hooks.SessionEnd).toBeDefined();
+    expect(runtime.systemAppend).toBe(buildSystemAppend(PROFILE, startup));
+  });
+
+  it("처음 보는 세션을 한 번만 등록한다", async () => {
+    const { call, recorder } = withMemory();
+    await call(prompt("안녕"));
+    await call(stop());
+    expect(recorder.register).toHaveBeenCalledTimes(1);
+    expect(recorder.register).toHaveBeenCalledWith("s", "/tmp");
+  });
+
+  it("사용자 턴 10번마다 기록을 요청하고, 입력 없는 Stop은 세지 않는다", async () => {
+    const { call, recorder } = withMemory([]);
+    await call(stop());
+    for (let turn = 0; turn < 9; turn++) {
+      await call(prompt(`작업 ${turn}`));
+      await call(stop());
+    }
+    expect(recorder.request).not.toHaveBeenCalled();
+    await call(prompt("열 번째"));
+    await call(stop());
+    expect(recorder.request).toHaveBeenCalledWith("s");
+    expect(recorder.request).toHaveBeenCalledTimes(1);
+  });
+
+  it("PreCompact는 기록을 기다리되 20초가 지나면 끝난다", async () => {
+    vi.useFakeTimers();
+    try {
+      const recorder = fakeRecorder({ request: vi.fn(() => new Promise<void>(() => undefined)) });
+      const { call } = withMemory([], recorder);
+      let finished = false;
+      const done = call(preCompact()).then(() => {
+        finished = true;
+      });
+      await vi.advanceTimersByTimeAsync(19_000);
+      expect(finished).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await done;
+      expect(finished).toBe(true);
+      expect(recorder.request).toHaveBeenCalledWith("s");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("SessionEnd는 기록을 요청하고 기다리지 않는다", async () => {
+    const recorder = fakeRecorder({ request: vi.fn(() => new Promise<void>(() => undefined)) });
+    const { call } = withMemory([], recorder);
+    await call(sessionEnd());
+    expect(recorder.request).toHaveBeenCalledWith("s");
+  });
+
+  it("기록이 끝나지 않아도 Stop 훅은 끝난다", async () => {
+    const recorder = fakeRecorder({ request: vi.fn(() => new Promise<void>(() => undefined)) });
+    const { call } = withMemory([], recorder);
+    for (let turn = 0; turn < 10; turn++) {
+      await call(prompt(`작업 ${turn}`));
+      await call(stop());
+    }
+    expect(recorder.request).toHaveBeenCalledTimes(1);
+  });
+
+  it("관련 입력이면 기억이 떠오르고 기분이 움직인다", async () => {
+    const { call, runtime } = withMemory();
+    const context = contextOf(await call(prompt(related)));
+    expect(context).toContain("떠오른 기억:");
+    expect(context).toContain("compact 명령 만들 때 main이 바뀌어 있었다");
+    expect(runtime.snapshot().state.recentReasons.at(-1)?.text).toMatch(/^기억: /);
+    expect(runtime.snapshot().state.dopamine).toBeGreaterThan(0);
+  });
+
+  it("사용자 입력이 아니면 떠올리지 않는다", async () => {
+    const { call } = withMemory();
+    expect(contextOf(await call(prompt(related, "system")))).not.toContain("떠오른 기억");
+  });
+
+  it("시작 기억에 든 것은 떠올리지 않는다", async () => {
+    const { call } = withMemory([compactMemory], fakeRecorder(), { memories: [compactMemory] });
+    expect(contextOf(await call(prompt(related)))).not.toContain("떠오른 기억");
+  });
+
+  it("같은 기억은 10턴 안에 다시 떠오르지 않고, 강하게 떠오름은 한 번만", async () => {
+    const strongMemory = { ...compactMemory, importance: 3 as const };
+    const { call } = withMemory([strongMemory]);
+    expect(contextOf(await call(prompt(related)))).toContain("강하게 떠오름");
+    expect(contextOf(await call(prompt(related)))).not.toContain("떠오른 기억");
+    for (let turn = 0; turn < 8; turn++) {
+      await call(prompt(`다른 얘기 ${turn}`));
+    }
+    const again = contextOf(await call(prompt(related)));
+    expect(again).toContain("떠오른 기억:");
+    expect(again).not.toContain("강하게 떠오름");
+  });
+
+  it("moodContext는 극단 진입과 부호 전환 표시점을 20개까지 쌓는다", async () => {
+    const { call, runtime } = withMemory([]);
+    await call(prompt("(츄르를 준다)"));
+    for (let index = 0; index < 30; index++) {
+      await call(toolFailure());
+    }
+    const { markers, reasons } = runtime.moodContext();
+    expect(markers.length).toBeGreaterThan(0);
+    expect(markers.length).toBeLessThanOrEqual(20);
+    expect(markers.some((marker) => marker.text.startsWith("극단 진입"))).toBe(true);
+    expect(reasons).toBe(runtime.snapshot().state.recentReasons);
   });
 });
