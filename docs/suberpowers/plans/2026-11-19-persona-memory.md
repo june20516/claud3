@@ -446,3 +446,13 @@
 - [x] **Step 5: 통과 확인** — Run: `npm test && npm run typecheck && npm run build` Expected: 모두 통과
 - [x] **Step 6: 실제 확인** — `npm run dev -- --persona yuri`로 열어 11턴 이상 대화한 뒤 종료하고, `~/.config/claud3/personas/yuri.memories.json`에 세션 항목과 커서가 생겼는지(경험은 0개일 수 있음) 확인한다. 다시 열었을 때 따라잡기가 남은 구간만 처리하는지 확인한다. 내용은 사용자에게 보여 주지 않고 형식만 확인한다.
 - [x] **Step 7: Commit** — `git commit -m "feat(persona): 기억 시작 조립·따라잡기와 문서"`
+
+## 후속 작업 (최종 리뷰에서 연기한 Minor)
+
+- [ ] 30일 정리한 세션이 `saveMemories`의 디스크 합집합으로 되살아난다(20개 상한으로 결국 빠짐). 저장 경로에서 `trimSessions`를 적용하고 디스크 기준으로 테스트한다.
+- [ ] `PreCompact` 기록 요청이 시작 따라잡기 대기열 뒤에 서서 20초를 넘기면 압축 전 구간을 잃을 수 있다. 우선 경로나 따라잡기 양보를 검토한다.
+- [ ] 기억 파일 읽기 오류(EACCES 등)가 `--persona` 시작을 막는다(기분 파일과 같은 기존 패턴). 경고 후 빈 기억으로 여는 방안.
+- [ ] 빈 `feeling`이면 append에 빈 괄호 `()`가 들어간다.
+- [ ] summary·feeling·이유 문구 자르기가 UTF-16 단위다(segment.ts는 코드 포인트). 한 함수로 통일한다.
+- [ ] 동시 저장 시 디스크 재읽기~rename 사이 수 ms 동안 다른 프로세스의 갱신을 잃을 수 있다(그 프로세스의 다음 저장에서 회복).
+- [ ] `isRecord` 도우미가 experience.ts·recordPrompt.ts·profile.ts에 중복된다.
