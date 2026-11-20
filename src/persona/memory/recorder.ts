@@ -53,6 +53,8 @@ export interface MemoryRecorderDeps {
   model: RecordModel;
   /** 디스크와 합쳐 저장하고 합친 결과를 돌려준다. */
   save: (file: MemoryFile) => Promise<MemoryFile>;
+  /** 디스크의 현재 기억(없거나 깨졌으면 undefined). 다른 프로세스가 옮긴 커서를 기록 전에 반영한다. */
+  reload: () => Promise<MemoryFile | undefined>;
   moodContext: () => { reasons: readonly MoodReason[]; markers: readonly MoodMarker[] };
   clock: () => Date;
   onCost: (usd: number) => void;
@@ -124,11 +126,18 @@ export function createMemoryRecorder(deps: MemoryRecorderDeps): MemoryRecorder {
     }
   }
 
-  function addExperiences(current: MemoryFile, session: TrackedSession, items: RecordedItem[], now: string): MemoryFile {
+  function addExperiences(
+    current: MemoryFile,
+    session: TrackedSession,
+    segmentEnd: string,
+    items: RecordedItem[],
+    now: string,
+  ): MemoryFile {
     const mood = summarizeSegmentMood(deps.moodContext().reasons, [], session.recordedUntil, now);
     const added = items.map(
       (item, index): Experience => ({
-        id: `${now}-${index}`,
+        // 구간에서 정해지는 id라, 두 프로세스가 같은 구간을 겹쳐 기록해도 합칠 때 하나가 된다.
+        id: `${session.sessionId}:${segmentEnd}:${index}`,
         ...item,
         at: now,
         sessionId: session.sessionId,
@@ -139,7 +148,20 @@ export function createMemoryRecorder(deps: MemoryRecorderDeps): MemoryRecorder {
     return { ...current, experiences: pruneExperiences([...current.experiences, ...added]) };
   }
 
+  /** 같은 인격의 다른 프로세스가 이미 기록한 구간을 다시 기록하지 않도록 디스크의 커서를 먼저 합친다. */
+  async function syncFromDisk(): Promise<void> {
+    try {
+      const disk = await deps.reload();
+      if (disk !== undefined) {
+        file = mergeMemoryFiles(file, disk);
+      }
+    } catch {
+      // 읽지 못하면 메모리 상태로 기록한다. 겹친 기록은 구간 기준 id로 합쳐진다.
+    }
+  }
+
   async function recordOnce(sessionId: string): Promise<void> {
+    await syncFromDisk();
     const session = file.sessions.find((item) => item.sessionId === sessionId);
     if (session === undefined) {
       return;
@@ -190,7 +212,7 @@ export function createMemoryRecorder(deps: MemoryRecorderDeps): MemoryRecorder {
     }
     const recorded = items;
     await commit((current) =>
-      updateSession(addExperiences(current, session, recorded, now), sessionId, {
+      updateSession(addExperiences(current, session, segment.lastUuid, recorded, now), sessionId, {
         cursor: segment.lastUuid,
         failures: 0,
         recordedUntil: now,

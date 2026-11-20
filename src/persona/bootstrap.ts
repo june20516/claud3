@@ -3,7 +3,7 @@ import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createReactionJudge } from "./actions.js";
 import { selectStartupMemories } from "./memory/experience.js";
 import type { Experience } from "./memory/experience.js";
-import { loadMemories, saveMemories } from "./memory/memoryStore.js";
+import { loadMemories, readMemories, saveMemories } from "./memory/memoryStore.js";
 import { createMemoryRecorder, createRecordModel } from "./memory/recorder.js";
 import type { OneShotQueryFn } from "./oneShot.js";
 import { isValidPersonaName } from "./profile.js";
@@ -64,6 +64,7 @@ export async function openPersona(name: string, deps: OpenPersonaDeps): Promise<
     readMessages: deps.readMessages ?? ((sessionId, cwd) => getSessionMessages(sessionId, { dir: cwd })),
     model: createRecordModel(deps.queryFn, deps.env),
     save: (file) => saveMemories(name, file, dir),
+    reload: () => readMemories(name, dir),
     moodContext: () => runtime?.moodContext() ?? { reasons: [], markers: [] },
     clock,
     onCost: deps.onCost,

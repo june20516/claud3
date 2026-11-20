@@ -29,6 +29,12 @@ async function readMemoryFile(filePath: string): Promise<MemoryFile | "broken" |
   }
 }
 
+/** 디스크의 현재 기억. 없거나 깨졌으면 undefined이고 파일을 옮기지 않는다. */
+export async function readMemories(name: string, dir: string = personasDir()): Promise<MemoryFile | undefined> {
+  const file = await readMemoryFile(memoriesPath(name, dir));
+  return file === "broken" ? undefined : file;
+}
+
 /** 없으면 빈 기억, 깨졌으면 .broken으로 옮기고 경고와 함께 빈 기억. */
 export async function loadMemories(
   name: string,

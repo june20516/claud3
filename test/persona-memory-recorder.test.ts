@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { Options, SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { MoodReason } from "../src/persona/mood.js";
-import { emptyMemoryFile } from "../src/persona/memory/experience.js";
+import { emptyMemoryFile, mergeMemoryFiles } from "../src/persona/memory/experience.js";
 import type { MemoryFile, MoodMarker, TrackedSession } from "../src/persona/memory/experience.js";
 import { createMemoryRecorder, createRecordModel } from "../src/persona/memory/recorder.js";
 import type { MemoryRecorderDeps, RecordModel } from "../src/persona/memory/recorder.js";
@@ -49,6 +49,7 @@ function setup(overrides: Partial<MemoryRecorderDeps> = {}, initialFile: MemoryF
       saved.push(file);
       return file;
     }),
+    reload: async () => undefined,
     moodContext: () => ({ reasons, markers }),
     clock: () => NOW,
     onCost: (usd) => costs.push(usd),
@@ -272,3 +273,52 @@ describe("createRecordModel", () => {
     });
   });
 });
+
+describe("같은 인격으로 두 프로세스", () => {
+  const tracked: TrackedSession = {
+    sessionId: "s1",
+    cwd: "/work",
+    cursor: null,
+    failures: 0,
+    lastSeenAt: NOW.toISOString(),
+    lastReadAt: null,
+    recordedUntil: NOW.toISOString(),
+  };
+
+  function sharedDisk() {
+    let disk: MemoryFile = { ...emptyMemoryFile(), sessions: [tracked] };
+    return {
+      save: async (file: MemoryFile) => {
+        disk = mergeMemoryFiles(disk, file);
+        return disk;
+      },
+      reload: async () => disk,
+      read: () => disk,
+    };
+  }
+
+  it("다른 프로세스가 이미 기록한 구간은 다시 기록하지 않는다", async () => {
+    const shared = sharedDisk();
+    const messages = exchange("처음 만났다");
+    const modelA = modelReturning(remembered);
+    const modelB = modelReturning(remembered);
+    const base = { initialFile: shared.read(), save: shared.save, reload: shared.reload, readMessages: async () => messages };
+    const processA = setup({ ...base, model: modelA, clock: () => NOW });
+    const processB = setup({ ...base, model: modelB, clock: () => new Date(NOW.getTime() + 60_000) });
+    await processB.recorder.request("s1");
+    await processA.recorder.request("s1");
+    expect(modelA).not.toHaveBeenCalled();
+    expect(shared.read().experiences).toHaveLength(1);
+  });
+
+  it("같은 구간을 동시에 기록해도 경험은 하나로 합쳐진다", async () => {
+    const shared = sharedDisk();
+    const messages = exchange("처음 만났다");
+    const base = { initialFile: shared.read(), save: shared.save, reload: shared.reload, readMessages: async () => messages };
+    const processA = setup({ ...base, model: modelReturning(remembered), clock: () => NOW });
+    const processB = setup({ ...base, model: modelReturning(remembered), clock: () => new Date(NOW.getTime() + 60_000) });
+    await Promise.all([processA.recorder.request("s1"), processB.recorder.request("s1")]);
+    expect(shared.read().experiences).toHaveLength(1);
+  });
+});
+

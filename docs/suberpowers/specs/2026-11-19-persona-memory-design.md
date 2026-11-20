@@ -52,7 +52,7 @@
   "version": 1,
   "experiences": [
     {
-      "id": "2026-11-19T06:41:00.000Z-0",
+      "id": "85d514c8-9479-48bc-b83b-983a0b7d9380:msg-uuid:0",
       "summary": "/compact 명령을 만들고 main에 합치려는데 그사이 main이 바뀌어 있었다",
       "feeling": "…겹치는 파일이 없어서 다행이었어요. 진짜로요.",
       "importance": 2,
@@ -76,7 +76,7 @@
 }
 ```
 
-- `experiences`: 최대 300개. `summary` 120자, `feeling` 60자 이내(넘으면 자른다). `importance`는 1~3 정수. `id`는 기록 시각 + 그 기록 안의 순번.
+- `experiences`: 최대 300개. `summary` 120자, `feeling` 60자 이내(넘으면 자른다). `importance`는 1~3 정수. `id`는 `<sessionId>:<구간 마지막 메시지 uuid>:<순번>`. 구간에서 정해져, 같은 인격의 두 프로세스가 같은 구간을 겹쳐 기록해도 합칠 때 하나가 된다. 기록 전에는 디스크 파일을 다시 읽어 다른 프로세스가 옮긴 커서를 반영한다.
 - `moodReasons`: 구간 시간대(그 세션의 `recordedUntil` ~ 기록 시각)에 있었던 기분 변동 이유 문구. `MoodState.recentReasons`(최근 10개)에서 고르므로, 시간이 지난 따라잡기 기록에서는 비어 있을 수 있다. 비어 있으면 `moodDelta`는 0이고 회상 이벤트가 생기지 않는다.
 - `moodDelta`: 같은 이유들의 stress·dopamine 변화 합계. 회상 이벤트의 방향을 정한다.
 - `sessions`: 이 인격이 켜졌던 세션. 최근 `lastSeenAt` 순 20개까지. `cursor`는 마지막으로 기록에 넣은 메시지 uuid(처음 `null`). `failures`는 현재 구간의 연속 실패 횟수. `lastReadAt`은 세션 기록을 마지막으로 읽은 시각. `recordedUntil`은 등록 시각으로 시작해 기록에 성공할 때마다 기록 시각으로 바뀐다(`SessionMessage` 타입에 시각 필드가 보장되지 않아 구간 시간대를 이것으로 잡는다).
