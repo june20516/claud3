@@ -28,6 +28,8 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/markdown.ts` | 스트리밍 텍스트를 줄 단위로 마크다운 스타일링 |
 | `src/inputHistory.ts` | 입력 기록 파일 읽기/저장 (화면 공용, 한 줄에 JSON 문자열 하나라 여러 줄 입력도 저장, 예전 형식 줄도 읽음) |
 | `src/persona/tuning.ts` | 인격 수치 상수(변화량·배율·반감기·경계값)와 칭찬·욕·테스트 명령·행동 줄 패턴 |
+| `src/persona/guards.ts` | `unknown` 좁히기 도우미(`isRecord`) |
+| `src/persona/text.ts` | 코드 포인트 단위 자르기·글자 수(`sliceChars`·`charCount`) |
 | `src/persona/profile.ts` | `PersonaProfile`·`PersonaDraft` 타입, 인격 파일 검증(`unknown`에서 좁힘), 초안 필드 걸러내기 |
 | `src/persona/mood.ts` | 기분 상태 머신 (I/O 없음): 이벤트 적용(민감도·요일·커플링·업무 시간 상한, 기억 회상 `recall`), 감쇠, 방향·세기, 부호 전환 |
 | `src/persona/turnEvents.ts` | 입력 반복(bigram 유사도)·칭찬·욕, 도구 성공·실패·테스트 통과, 느린 턴 → 이벤트 (I/O 없음) |
@@ -39,10 +41,10 @@ Max 요금제로 받은 프로모션 API 크레딧(Agent SDK 사용분에 적용
 | `src/persona/memory/experience.ts` | 기억 타입·검증, 합치기·개수 정리, 시작 기억 선택, 턴별 회상(bigram), 회상 이벤트, 구간 기분 요약 (I/O 없음) |
 | `src/persona/memory/segment.ts` | SDK 세션 기록 + 커서 → 기록할 대화 구간(도구는 이름·성패만, 길이 제한, 앞 구간 맥락) (I/O 없음) |
 | `src/persona/memory/recordPrompt.ts` | 기억 기록 Haiku 프롬프트(선정 기준·중요도), JSON schema, 출력 해석 (I/O 없음) |
-| `src/persona/memory/memoryStore.ts` | `<이름>.memories.json` 읽기·저장(저장 직전 디스크와 합치기), 깨진 파일은 `.broken`으로 |
-| `src/persona/memory/recorder.ts` | 세션 등록·커서, 기록 대기열(한 번에 하나, 같은 세션 합치기), Haiku 호출, 실패 3회 포기, 따라잡기. 경고는 한 번, 기억 내용은 화면에 내지 않는다 |
+| `src/persona/memory/memoryStore.ts` | `<이름>.memories.json` 읽기·저장. 저장은 `<파일>.lock` 디렉터리 잠금(최대 3초 대기, 10초 넘은 잠금은 치움) 안에서 디스크와 합치고 오래된 세션을 정리해 쓴다. 깨진 파일은 `.broken`으로 |
+| `src/persona/memory/recorder.ts` | 세션 등록·커서, 기록 대기열(한 번에 하나, 같은 세션 합치기, `urgent` 요청은 맨 앞), 기록 전 디스크 커서 반영, 구간 기준 경험 id, Haiku 호출, 실패 3회 포기, 따라잡기. 경고는 한 번, 기억 내용은 화면에 내지 않는다 |
 | `src/persona/runtime.ts` | SDK hooks(`UserPromptSubmit`·`PostToolUse(Failure)`·`Stop`, 기억이 있으면 `PreCompact`·`SessionEnd`)로 기분 갱신·저장·주입, 직렬화, 예외 격리, 구독. 기억: 세션 등록, 10턴·압축 직전(최대 20초 대기)·`/clear`에 기록 요청(기분 대기열 밖), 회상, 기분 표시점 |
-| `src/persona/bootstrap.ts` | `--persona` 이름으로 인격·기분·기억을 읽어 기록기와 런타임 생성, 시작 따라잡기(백그라운드), 실패 문구 |
+| `src/persona/bootstrap.ts` | `--persona` 이름으로 인격·기분·기억을 읽어 기록기와 런타임 생성, 시작 따라잡기(백그라운드), 실패 문구. 기억 파일을 읽지 못하면 경고 후 기억 없이 연다 |
 | `src/persona/validateFile.ts` | `--validate-persona`: 인격 파일 검사(`validateProfile` + 파일 이름과 `name` 일치), 종료 코드 0·1·2와 stderr 줄 (API 키·SDK·네트워크 없음) |
 | `src/persona/create.ts` | `/persona-create` 흐름: 참고 자료 → 조사(WebSearch·WebFetch만, 설정 격리) → 설문 → 생성 → 확인·저장 |
 | `src/ui/runOptions.ts` | `UiRunOptions`(`startupCommand` 포함), `ChatUi` 타입(`prompter`·`asker`). 명령 출력(`print`)과 세션 고르기(`pickSession`)는 화면이 제공한다 |
