@@ -188,6 +188,60 @@ describe("createMemoryRecorder", () => {
     expect(segmentPart).not.toContain("사용자: 첫 대화");
   });
 
+  it("급한 요청(압축 직전)은 기다리던 따라잡기보다 먼저 돈다", async () => {
+    let release: () => void = () => undefined;
+    const order: string[] = [];
+    const model = vi.fn(async (prompt: string) => {
+      const session = /사용자: (\S+) 대화/.exec(prompt)?.[1] ?? "?";
+      order.push(session);
+      if (order.length === 1) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return { output: { experiences: [] }, costUsd: 0 };
+    });
+    const { recorder, sessionsMessages } = setup({ model });
+    for (const id of ["a", "b", "c", "s1"]) {
+      sessionsMessages.set(id, exchange(`${id} 대화`));
+      recorder.register(id, "/work");
+    }
+    const runs = [recorder.request("a"), recorder.request("b"), recorder.request("c")];
+    await vi.waitFor(() => expect(model).toHaveBeenCalledTimes(1));
+    runs.push(recorder.request("s1", { urgent: true }));
+    release();
+    await Promise.all(runs);
+    expect(order).toEqual(["a", "s1", "b", "c"]);
+  });
+
+  it("이미 기다리던 요청이 급해지면 앞으로 옮긴다", async () => {
+    let release: () => void = () => undefined;
+    const order: string[] = [];
+    const model = vi.fn(async (prompt: string) => {
+      order.push(/사용자: (\S+) 대화/.exec(prompt)?.[1] ?? "?");
+      if (order.length === 1) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return { output: { experiences: [] }, costUsd: 0 };
+    });
+    const { recorder, sessionsMessages } = setup({ model });
+    for (const id of ["a", "b", "s1"]) {
+      sessionsMessages.set(id, exchange(`${id} 대화`));
+      recorder.register(id, "/work");
+    }
+    const first = recorder.request("a");
+    await vi.waitFor(() => expect(model).toHaveBeenCalledTimes(1));
+    const waitingB = recorder.request("b");
+    const waitingS1 = recorder.request("s1");
+    const urgentS1 = recorder.request("s1", { urgent: true });
+    expect(urgentS1).toBe(waitingS1);
+    release();
+    await Promise.all([first, waitingB, urgentS1]);
+    expect(order).toEqual(["a", "s1", "b"]);
+  });
+
   it("등록 안 된 세션은 아무것도 하지 않는다", async () => {
     const { recorder, deps } = setup();
     await recorder.request("unknown");

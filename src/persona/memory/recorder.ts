@@ -65,11 +65,22 @@ export interface MemoryRecorderDeps {
 export interface MemoryRecorder {
   /** 처음 보는 세션이면 커서 null로 추가하고, 아는 세션이면 lastSeenAt만 갱신한다. 저장은 대기열에서 한다. */
   register(sessionId: string, cwd: string): void;
-  /** 그 세션 기록을 대기열에 넣고 끝나면 resolve한다. 절대 reject하지 않는다. 등록 안 된 세션은 아무것도 하지 않는다. */
-  request(sessionId: string): Promise<void>;
+  /**
+   * 그 세션 기록을 대기열에 넣고 끝나면 resolve한다. 절대 reject하지 않는다. 등록 안 된 세션은 아무것도 하지 않는다.
+   * urgent(압축 직전)면 기다리는 요청들보다 앞에 선다. 이미 돌고 있는 기록은 끊지 않는다.
+   */
+  request(sessionId: string, options?: { urgent?: boolean }): Promise<void>;
   /** 오래 못 읽은 세션을 정리하고, 남은 세션을 차례로 기록한다. */
   catchUp(): Promise<void>;
   current(): MemoryFile;
+}
+
+interface Job {
+  task: () => Promise<void>;
+  /** 같은 세션 기록 요청을 합칠 때 쓴다. 저장만 하는 작업은 없다. */
+  key?: string;
+  done: Promise<void>;
+  finish: () => void;
 }
 
 function errorText(error: unknown): string {
@@ -97,9 +108,9 @@ function recentSummaries(experiences: readonly Experience[]): string[] {
 export function createMemoryRecorder(deps: MemoryRecorderDeps): MemoryRecorder {
   let file = deps.initialFile;
   let warned = false;
-  let chain: Promise<void> = Promise.resolve();
-  /** 아직 시작하지 않은 세션별 요청. 같은 세션 요청은 여기서 합쳐진다. */
-  const queued = new Map<string, Promise<void>>();
+  /** 아직 시작하지 않은 작업. 한 번에 하나씩 앞에서부터 꺼내 돈다. */
+  const jobs: Job[] = [];
+  let pumping = false;
 
   function warn(error: unknown): void {
     if (!warned) {
@@ -108,10 +119,44 @@ export function createMemoryRecorder(deps: MemoryRecorderDeps): MemoryRecorder {
     }
   }
 
-  function enqueue(task: () => Promise<void>): Promise<void> {
-    const run = chain.then(task).catch(warn);
-    chain = run;
-    return run;
+  async function pump(): Promise<void> {
+    if (pumping) {
+      return;
+    }
+    pumping = true;
+    for (let job = jobs.shift(); job !== undefined; job = jobs.shift()) {
+      try {
+        await job.task();
+      } catch (error) {
+        warn(error);
+      }
+      job.finish();
+    }
+    pumping = false;
+  }
+
+  /** 작업을 대기열에 넣는다. key가 같은 작업이 기다리고 있으면 그것을 돌려주고, urgent면 맨 앞으로 옮긴다. */
+  function enqueue(task: () => Promise<void>, options: { key?: string; urgent?: boolean } = {}): Promise<void> {
+    const waiting = options.key === undefined ? undefined : jobs.find((job) => job.key === options.key);
+    if (waiting !== undefined) {
+      if (options.urgent === true) {
+        jobs.splice(jobs.indexOf(waiting), 1);
+        jobs.unshift(waiting);
+      }
+      return waiting.done;
+    }
+    let finish: () => void = () => undefined;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const job: Job = { task, done, finish, ...(options.key === undefined ? {} : { key: options.key }) };
+    if (options.urgent === true) {
+      jobs.unshift(job);
+    } else {
+      jobs.push(job);
+    }
+    void pump();
+    return done;
   }
 
   /** update를 적용해 저장한다. 실패하면 메모리 상태를 바꾸지 않는다. 저장 대기 중 등록된 세션은 합쳐서 지킨다. */
@@ -221,17 +266,9 @@ export function createMemoryRecorder(deps: MemoryRecorderDeps): MemoryRecorder {
     );
   }
 
-  function request(sessionId: string): Promise<void> {
-    const waiting = queued.get(sessionId);
-    if (waiting !== undefined) {
-      return waiting;
-    }
-    const run = enqueue(async () => {
-      queued.delete(sessionId);
-      await recordOnce(sessionId);
-    });
-    queued.set(sessionId, run);
-    return run;
+  // 작업은 꺼낼 때 목록에서 빠지므로, 기록 중에 온 같은 세션 요청은 끝난 뒤 새 커서부터 한 번 더 돈다.
+  function request(sessionId: string, options: { urgent?: boolean } = {}): Promise<void> {
+    return enqueue(() => recordOnce(sessionId), { key: sessionId, ...options });
   }
 
   return {

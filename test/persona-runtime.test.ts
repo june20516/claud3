@@ -262,7 +262,7 @@ describe("기억 연결", () => {
       await vi.advanceTimersByTimeAsync(1_000);
       await done;
       expect(finished).toBe(true);
-      expect(recorder.request).toHaveBeenCalledWith("s");
+      expect(recorder.request).toHaveBeenCalledWith("s", { urgent: true });
     } finally {
       vi.useRealTimers();
     }

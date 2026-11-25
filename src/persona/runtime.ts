@@ -250,8 +250,12 @@ export function createPersonaRuntime(deps: PersonaRuntimeDeps): PersonaRuntime {
     }
     const sessionId = input.session_id;
     turnsSinceRecord.set(sessionId, 0);
-    const recording = memory.recorder.request(sessionId);
-    if (input.hook_event_name === "PreCompact") {
+    const isPreCompact = input.hook_event_name === "PreCompact";
+    // 압축 직전에는 따라잡기 등 기다리던 기록보다 먼저 돌아야 압축 전 원문을 읽을 수 있다.
+    const recording = isPreCompact
+      ? memory.recorder.request(sessionId, { urgent: true })
+      : memory.recorder.request(sessionId);
+    if (isPreCompact) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<void>((resolve) => {
         timer = setTimeout(resolve, PRECOMPACT_WAIT_MS);
