@@ -63,7 +63,7 @@ export async function openPersona(name: string, deps: OpenPersonaDeps): Promise<
     initialFile: memories.file,
     readMessages: deps.readMessages ?? ((sessionId, cwd) => getSessionMessages(sessionId, { dir: cwd })),
     model: createRecordModel(deps.queryFn, deps.env),
-    save: (file) => saveMemories(name, file, dir),
+    save: (file) => saveMemories(name, file, dir, clock()),
     reload: () => readMemories(name, dir),
     moodContext: () => runtime?.moodContext() ?? { reasons: [], markers: [] },
     clock,
