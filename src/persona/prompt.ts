@@ -47,7 +47,10 @@ function memoryLines(startup: StartupMemories | undefined): string[] {
     "",
     "## 기억",
     "사용자와 함께한 일 중 기억나는 것. 대화에 자연스러울 때만 꺼내고, 억지로 언급하지 않는다.",
-    ...startup.memories.map((item) => `- ${formatMemoryDate(item.at)} ${item.summary} (${item.feeling})`),
+    ...startup.memories.map((item) => {
+      const feeling = item.feeling.trim() === "" ? "" : ` (${item.feeling})`;
+      return `- ${formatMemoryDate(item.at)} ${item.summary}${feeling}`;
+    }),
   ];
   if (startup.lead !== undefined) {
     lines.push(

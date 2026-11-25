@@ -137,6 +137,12 @@ describe("기억", () => {
     );
   });
 
+  it("소감이 비면 괄호를 붙이지 않는다", () => {
+    const append = buildSystemAppend(PROFILE, { memories: [memory({ feeling: "" })] });
+    expect(append).toContain("- 11/19 main이 바뀌어 있었다\n");
+    expect(append).not.toContain("()");
+  });
+
   it("lead가 있으면 먼저 언급 줄", () => {
     const lead = memory({ importance: 3 });
     expect(buildSystemAppend(PROFILE, { memories: [lead], lead })).toContain(
