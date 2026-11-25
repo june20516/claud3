@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -134,6 +134,17 @@ describe("openPersona", () => {
       const result = await openPersona("rapi", { ...deps(dir), onWarning: (text) => warnings.push(text) });
       expect(result.ok).toBe(true);
       expect(warnings).toEqual(["기억 파일이 깨져 새로 시작합니다"]);
+    });
+
+    it("기억 파일을 읽지 못하면 경고하고 기억 없이 연다", async () => {
+      await saveFixture();
+      await mkdir(memoriesPath("rapi", dir));
+      const warnings: string[] = [];
+      const result = await openPersona("rapi", { ...deps(dir), onWarning: (text) => warnings.push(text) });
+      expect(result.ok).toBe(true);
+      expect(result.ok && result.runtime.hooks.PreCompact).toBeFalsy();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatch(/^기억 파일을 읽지 못해 이번 실행은 기억 없이 시작합니다: /);
     });
 
     it("커서 뒤에 대화가 남은 세션을 따라잡아 기록한다", async () => {
