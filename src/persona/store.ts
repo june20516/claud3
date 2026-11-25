@@ -8,6 +8,8 @@ import type { PersonaProfile, ValidationIssue } from "./profile.js";
 
 const PROFILE_SUFFIX = ".json";
 const MOOD_SUFFIX = ".mood.json";
+/** 인격 파일이 아닌 같은 디렉터리의 파일들. */
+const COMPANION_SUFFIXES = [MOOD_SUFFIX, ".memories.json"];
 const BROKEN_MOOD_WARNING = "기분 파일이 깨져 새로 시작합니다";
 
 export type ProfileLoadResult =
@@ -27,12 +29,12 @@ function moodPath(name: string, dir: string): string {
   return join(dir, `${name}${MOOD_SUFFIX}`);
 }
 
-function isMissingFile(error: unknown): boolean {
+export function isMissingFile(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 /** 임시 파일에 쓰고 rename해 중간에 끊겨도 반쯤 쓴 파일이 남지 않게 한다. */
-async function writeJsonAtomically(filePath: string, value: unknown): Promise<void> {
+export async function writeJsonAtomically(filePath: string, value: unknown): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.tmp`;
   await writeFile(tempPath, JSON.stringify(value, null, 2), "utf8");
@@ -50,7 +52,7 @@ export async function listPersonas(dir: string = personasDir()): Promise<string[
     throw error;
   }
   return entries
-    .filter((entry) => entry.endsWith(PROFILE_SUFFIX) && !entry.endsWith(MOOD_SUFFIX))
+    .filter((entry) => entry.endsWith(PROFILE_SUFFIX) && !COMPANION_SUFFIXES.some((suffix) => entry.endsWith(suffix)))
     .map((entry) => entry.slice(0, -PROFILE_SUFFIX.length))
     .sort();
 }

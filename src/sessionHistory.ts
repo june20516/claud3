@@ -12,14 +12,22 @@ export type SessionMessageReader = (sessionId: string) => Promise<SessionMessage
 /** Claude Code가 남기는 슬래시 명령 기록. 대화 내용이 아니므로 보이지 않는다. */
 const COMMAND_RECORD_PATTERN = /^<(command-|local-command-)/;
 
-type ContentBlock = { type: string; text?: unknown; name?: unknown; input?: unknown };
+export type ContentBlock = {
+  type: string;
+  text?: unknown;
+  name?: unknown;
+  input?: unknown;
+  id?: unknown;
+  tool_use_id?: unknown;
+  is_error?: unknown;
+};
 
-function contentOf(message: SessionMessage): unknown {
+export function contentOf(message: SessionMessage): unknown {
   const body = message.message;
   return typeof body === "object" && body !== null && "content" in body ? body.content : undefined;
 }
 
-function blocksOf(content: unknown): ContentBlock[] {
+export function blocksOf(content: unknown): ContentBlock[] {
   if (!Array.isArray(content)) {
     return [];
   }
@@ -29,7 +37,7 @@ function blocksOf(content: unknown): ContentBlock[] {
 }
 
 /** 화면에 보일 메시지인지. 서브에이전트, 메타, compact 요약은 뺀다. */
-function isVisible(message: SessionMessage): boolean {
+export function isVisible(message: SessionMessage): boolean {
   const flags: Record<string, unknown> = message;
   return (
     message.type !== "system" &&
@@ -39,7 +47,7 @@ function isVisible(message: SessionMessage): boolean {
   );
 }
 
-function userText(content: unknown): string | undefined {
+export function userText(content: unknown): string | undefined {
   const text =
     typeof content === "string"
       ? content

@@ -1,10 +1,13 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openPersona } from "../src/persona/bootstrap.js";
 import type { OneShotQueryFn } from "../src/persona/oneShot.js";
 import type { PersonaProfile } from "../src/persona/profile.js";
+import { loadMemories, memoriesPath, saveMemories } from "../src/persona/memory/memoryStore.js";
+import { emptyMemoryFile } from "../src/persona/memory/experience.js";
 import { saveProfile } from "../src/persona/store.js";
 
 const unusedQuery: OneShotQueryFn = () => {
@@ -12,7 +15,7 @@ const unusedQuery: OneShotQueryFn = () => {
 };
 
 function deps(dir: string) {
-  return { queryFn: unusedQuery, env: {}, onCost: () => {}, onWarning: () => {}, dir };
+  return { queryFn: unusedQuery, env: {}, onCost: () => {}, onWarning: () => {}, dir, readMessages: async () => [] };
 }
 
 describe("openPersona", () => {
@@ -73,5 +76,113 @@ describe("openPersona", () => {
     const warnings: string[] = [];
     await openPersona("rapi", { ...deps(dir), onWarning: (message) => warnings.push(message) });
     expect(warnings).toEqual(["기분 파일이 깨져 새로 시작합니다"]);
+  });
+
+  describe("기억", () => {
+    async function saveFixture(): Promise<void> {
+      const profile = JSON.parse(await readFile(new URL("./fixtures/persona-rapi.json", import.meta.url), "utf8")) as PersonaProfile;
+      await saveProfile(profile, dir);
+    }
+
+    const message = (type: "user" | "assistant", uuid: string, text: string): SessionMessage => ({
+      type,
+      uuid,
+      session_id: "old",
+      message: { role: type, content: type === "user" ? text : [{ type: "text", text }] },
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+    });
+
+    const trackedSession = {
+      sessionId: "old",
+      cwd: "/other/project",
+      cursor: null,
+      failures: 0,
+      lastSeenAt: new Date().toISOString(),
+      lastReadAt: null,
+      recordedUntil: new Date().toISOString(),
+    };
+
+    it("기억 파일이 없으면 기억 단락 없이 열고 PreCompact 훅이 있다", async () => {
+      await saveFixture();
+      const result = await openPersona("rapi", deps(dir));
+      expect(result.ok && result.runtime.systemAppend).not.toContain("## 기억");
+      expect(result.ok && result.runtime.hooks.PreCompact).toBeTruthy();
+    });
+
+    it("기억이 있으면 시작 기억을 append에 넣는다", async () => {
+      await saveFixture();
+      const memory = {
+        id: "e1",
+        summary: "main이 바뀌어 있었다",
+        feeling: "다행이었어요.",
+        importance: 2 as const,
+        at: new Date().toISOString(),
+        sessionId: "old",
+        moodReasons: [],
+        moodDelta: { stress: 0, dopamine: 0 },
+      };
+      await saveMemories("rapi", { ...emptyMemoryFile(), experiences: [memory] }, dir);
+      const result = await openPersona("rapi", deps(dir));
+      expect(result.ok && result.runtime.systemAppend).toContain("main이 바뀌어 있었다 (다행이었어요.)");
+    });
+
+    it("깨진 기억 파일은 경고하고 연다", async () => {
+      await saveFixture();
+      await writeFile(memoriesPath("rapi", dir), "{", "utf8");
+      const warnings: string[] = [];
+      const result = await openPersona("rapi", { ...deps(dir), onWarning: (text) => warnings.push(text) });
+      expect(result.ok).toBe(true);
+      expect(warnings).toEqual(["기억 파일이 깨져 새로 시작합니다"]);
+    });
+
+    it("기억 파일을 읽지 못하면 경고하고 기억 없이 연다", async () => {
+      await saveFixture();
+      await mkdir(memoriesPath("rapi", dir));
+      const warnings: string[] = [];
+      const result = await openPersona("rapi", { ...deps(dir), onWarning: (text) => warnings.push(text) });
+      expect(result.ok).toBe(true);
+      expect(result.ok && result.runtime.hooks.PreCompact).toBeFalsy();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatch(/^기억 파일을 읽지 못해 이번 실행은 기억 없이 시작합니다: /);
+    });
+
+    it("커서 뒤에 대화가 남은 세션을 따라잡아 기록한다", async () => {
+      await saveFixture();
+      await saveMemories("rapi", { ...emptyMemoryFile(), sessions: [trackedSession] }, dir);
+      const queryFn = vi.fn(() =>
+        (async function* () {
+          yield {
+            type: "result",
+            subtype: "success",
+            structured_output: { experiences: [{ summary: "칭찬을 들었다", feeling: "…흥.", importance: 2 }] },
+            total_cost_usd: 0.001,
+          } as unknown as SDKMessage;
+        })(),
+      );
+      const readMessages = vi.fn(async () => [message("user", "m1", "잘했어"), message("assistant", "m2", "…네.")]);
+      await openPersona("rapi", { ...deps(dir), queryFn, readMessages });
+      await vi.waitFor(async () => {
+        const { file } = await loadMemories("rapi", dir);
+        expect(file.experiences.map((item) => item.summary)).toEqual(["칭찬을 들었다"]);
+        expect(file.sessions[0]?.cursor).toBe("m2");
+      });
+      expect(readMessages).toHaveBeenCalledWith("old", "/other/project");
+      expect(queryFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("남은 대화가 없으면 모델을 부르지 않는다", async () => {
+      await saveFixture();
+      await saveMemories("rapi", { ...emptyMemoryFile(), sessions: [{ ...trackedSession, cursor: "m2" }] }, dir);
+      const queryFn = vi.fn(unusedQuery);
+      const readMessages = vi.fn(async () => [message("user", "m1", "잘했어"), message("assistant", "m2", "…네.")]);
+      await openPersona("rapi", { ...deps(dir), queryFn, readMessages });
+      // 읽은 시각을 저장할 때까지 기다린다(그 전에 끝내면 임시 디렉터리 삭제와 겹친다).
+      await vi.waitFor(async () => {
+        const { file } = await loadMemories("rapi", dir);
+        expect(file.sessions[0]?.lastReadAt).not.toBeNull();
+      });
+      expect(queryFn).not.toHaveBeenCalled();
+    });
   });
 });

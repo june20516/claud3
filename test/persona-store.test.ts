@@ -53,6 +53,12 @@ describe("persona store", () => {
     expect(await listPersonas(dir)).toEqual(["rapi", "zed"]);
   });
 
+  it("기억 파일은 인격 목록에 들어가지 않는다", async () => {
+    await saveProfile(await fixtureProfile(), dir);
+    await writeFile(join(dir, "rapi.memories.json"), JSON.stringify({ version: 1, experiences: [], sessions: [] }), "utf8");
+    expect(await listPersonas(dir)).toEqual(["rapi"]);
+  });
+
   it("없는 인격은 missing", async () => {
     expect(await loadProfile("ghost", dir)).toEqual({ ok: false, reason: "missing" });
   });
