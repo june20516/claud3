@@ -1,3 +1,4 @@
+import { isRecord } from "../guards.js";
 import type { MoodEvent, MoodReason } from "../mood.js";
 import {
   FEELING_MAX,
@@ -52,11 +53,6 @@ export interface MemoryFile {
   sessions: TrackedSession[];
 }
 
-type UnknownRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);

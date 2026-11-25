@@ -1,3 +1,5 @@
+import { isRecord } from "./guards.js";
+import type { UnknownRecord } from "./guards.js";
 import { REACTION_LIMIT } from "./tuning.js";
 
 export type Direction = "hot" | "cold" | "elated" | "sunken";
@@ -67,11 +69,6 @@ export function isValidPersonaName(name: string): boolean {
   return PERSONA_NAME_PATTERN.test(name);
 }
 
-type UnknownRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isIntegerIn(value: unknown, min: number, max: number): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;

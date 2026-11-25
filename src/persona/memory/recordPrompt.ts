@@ -1,3 +1,4 @@
+import { isRecord } from "../guards.js";
 import type { PersonaProfile } from "../profile.js";
 import { sliceChars } from "../text.js";
 import { FEELING_MAX, SUMMARY_MAX } from "../tuning.js";
@@ -88,9 +89,6 @@ export function buildRecordPrompt({ profile, segment, mood, recentSummaries }: R
   return lines.join("\n");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function parseItem(value: unknown): RecordedItem | undefined {
   if (!isRecord(value)) {
