@@ -74,6 +74,11 @@ describe("parseRecordOutput", () => {
     expect(entry?.feeling).toHaveLength(60);
   });
 
+  it("자를 때 이모지를 반으로 자르지 않는다", () => {
+    const [entry] = parseRecordOutput({ experiences: [{ summary: `${"가".repeat(119)}😀끝`, feeling: "음.", importance: 2 }] }) ?? [];
+    expect(entry?.summary).toBe(`${"가".repeat(119)}😀`);
+  });
+
   it("형식이 아예 틀리면 undefined", () => {
     expect(parseRecordOutput(null)).toBeUndefined();
     expect(parseRecordOutput({})).toBeUndefined();

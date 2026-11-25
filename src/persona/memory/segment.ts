@@ -1,5 +1,6 @@
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import { blocksOf, contentOf, isVisible, userText } from "../../sessionHistory.js";
+import { charCount, sliceChars } from "../text.js";
 import { SEGMENT_LIMITS } from "../tuning.js";
 
 export interface SegmentLimits {
@@ -24,8 +25,7 @@ const OMITTED_LINE = "(앞부분 생략)";
 const USER_PREFIX = "사용자: ";
 
 function clip(text: string, limit: number): string {
-  const characters = [...text];
-  return characters.length > limit ? `${characters.slice(0, limit).join("")}…` : text;
+  return charCount(text) > limit ? `${sliceChars(text, limit)}…` : text;
 }
 
 function oneLine(text: string): string {
@@ -97,10 +97,10 @@ function linesOf(
 
 /** 앞쪽 줄부터 버려 합계가 totalChars 이하가 되게 한다. 버렸으면 맨 앞에 생략 표시. */
 function fitTotal(lines: string[], totalChars: number): string[] {
-  let total = lines.reduce((sum, line) => sum + [...line].length, 0);
+  let total = lines.reduce((sum, line) => sum + charCount(line), 0);
   let start = 0;
   while (total > totalChars && start < lines.length) {
-    total -= [...(lines[start] ?? "")].length;
+    total -= charCount(lines[start] ?? "");
     start++;
   }
   return start === 0 ? lines : [OMITTED_LINE, ...lines.slice(start)];

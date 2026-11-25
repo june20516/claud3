@@ -12,6 +12,7 @@ import {
   STARTUP_MEMORIES,
   SUMMARY_MAX,
 } from "../tuning.js";
+import { sliceChars } from "../text.js";
 import { bigramSimilarity, normalizePrompt } from "../turnEvents.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -99,8 +100,8 @@ function parseExperience(value: unknown): Experience | undefined {
   }
   return {
     id,
-    summary: summary.slice(0, SUMMARY_MAX),
-    feeling: feeling.slice(0, FEELING_MAX),
+    summary: sliceChars(summary, SUMMARY_MAX),
+    feeling: sliceChars(feeling, FEELING_MAX),
     importance,
     at,
     sessionId,

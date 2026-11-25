@@ -223,6 +223,11 @@ describe("recall 이벤트", () => {
     expect(next.recentReasons.at(-1)?.text).toBe("기억: 가나다라마바사아자차카타파하가나다라마바…");
   });
 
+  it("이유 문구도 이모지를 반으로 자르지 않는다", () => {
+    const next = apply(mood(), [recall(`${"가".repeat(19)}😀끝`, 0, 5)], neutral);
+    expect(next.recentReasons.at(-1)?.text).toBe(`기억: ${"가".repeat(19)}😀…`);
+  });
+
   it("연속 실패 수를 바꾸지 않는다", () => {
     expect(apply(mood({ failureStreak: 2 }), [recall("실수했다", 3, 0)], neutral).failureStreak).toBe(2);
   });

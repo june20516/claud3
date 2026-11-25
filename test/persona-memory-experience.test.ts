@@ -78,6 +78,11 @@ describe("parseMemoryFile", () => {
     expect(parsed?.experiences[0]?.feeling).toHaveLength(60);
   });
 
+  it("자를 때 이모지를 반으로 자르지 않는다", () => {
+    const parsed = parseMemoryFile(file([experience({ summary: `${"가".repeat(119)}😀끝` })]));
+    expect(parsed?.experiences[0]?.summary).toBe(`${"가".repeat(119)}😀`);
+  });
+
   it("cursor null과 lastReadAt null을 허용한다", () => {
     const parsed = parseMemoryFile(file([], [session({ cursor: null, lastReadAt: null })]));
     expect(parsed?.sessions[0]).toMatchObject({ cursor: null, lastReadAt: null });

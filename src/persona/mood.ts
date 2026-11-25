@@ -1,3 +1,4 @@
+import { charCount, sliceChars } from "./text.js";
 import type { Direction, PersonaProfile, WorkHours } from "./profile.js";
 import {
   COUPLING,
@@ -212,7 +213,7 @@ function reasonText(event: MoodEvent): string {
   }
   if (event.kind === "recall") {
     const summary =
-      event.summary.length > RECALL_LABEL_CHARS ? `${event.summary.slice(0, RECALL_LABEL_CHARS)}…` : event.summary;
+      charCount(event.summary) > RECALL_LABEL_CHARS ? `${sliceChars(event.summary, RECALL_LABEL_CHARS)}…` : event.summary;
     return `기억: ${summary}`;
   }
   return EVENT_LABELS[event.kind];

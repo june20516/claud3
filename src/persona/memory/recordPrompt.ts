@@ -1,4 +1,5 @@
 import type { PersonaProfile } from "../profile.js";
+import { sliceChars } from "../text.js";
 import { FEELING_MAX, SUMMARY_MAX } from "../tuning.js";
 import type { Experience, SegmentMood } from "./experience.js";
 import type { Segment } from "./segment.js";
@@ -102,7 +103,7 @@ function parseItem(value: unknown): RecordedItem | undefined {
   if (importance !== 1 && importance !== 2 && importance !== 3) {
     return undefined;
   }
-  return { summary: summary.trim().slice(0, SUMMARY_MAX), feeling: feeling.trim().slice(0, FEELING_MAX), importance };
+  return { summary: sliceChars(summary.trim(), SUMMARY_MAX), feeling: sliceChars(feeling.trim(), FEELING_MAX), importance };
 }
 
 /** 형식이 아예 틀리면 undefined(실패). 깨진 항목은 버리고 유효한 앞 3개, 긴 글은 자른다. */
